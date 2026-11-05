@@ -2,14 +2,27 @@ import { json } from '@sveltejs/kit';
 import { OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL } from '$app/env/private';
 import type { RequestHandler } from './$types';
 
+type ActReference = {
+	act: string;
+	sections: string[];
+	relevance: string;
+};
+
 type SpotterResponse = {
 	issues: string[];
 	doctrines: string[];
 	precedents: string[];
+	acts: ActReference[];
 };
 
 const SYSTEM_PROMPT =
-	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. Output JSON with keys: issues, doctrines, precedents. Each key must map to an array of short bullet-ready strings.';
+	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. ' +
+	'Output JSON with keys: issues, doctrines, precedents, acts. ' +
+	'issues, doctrines and precedents must each map to an array of short bullet-ready strings (max 8 each). ' +
+	'acts must map to an array of up to 6 objects, each shaped like ' +
+	'{"act": "Name of the Act, Year", "sections": ["Section 73", "Section 74"], "relevance": "one line on why it applies"}. ' +
+	'Name the most relevant statute for the facts; use the jurisdiction the facts imply (default to Indian law for Indian-style facts). ' +
+	'If no statute squarely applies, return an empty acts array.';
 
 function normalizeList(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
@@ -18,6 +31,41 @@ function normalizeList(value: unknown): string[] {
 		.map((item) => item.trim())
 		.filter(Boolean)
 		.slice(0, 8);
+}
+
+function normalizeSections(value: unknown): string[] {
+	const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[,;]/) : [];
+	return list
+		.filter((item): item is string => typeof item === 'string')
+		.map((item) => item.trim())
+		.filter(Boolean)
+		.slice(0, 8);
+}
+
+function normalizeActs(value: unknown): ActReference[] {
+	if (!Array.isArray(value)) return [];
+	const acts: ActReference[] = [];
+	for (const item of value) {
+		if (typeof item === 'string') {
+			const act = item.trim();
+			if (act) acts.push({ act, sections: [], relevance: '' });
+		} else if (item && typeof item === 'object') {
+			const record = item as Record<string, unknown>;
+			const act = ['act', 'name', 'title', 'statute']
+				.map((key) => record[key])
+				.find((field): field is string => typeof field === 'string' && field.trim().length > 0);
+			if (!act) continue;
+			const relevance =
+				typeof record.relevance === 'string'
+					? record.relevance.trim()
+					: typeof record.note === 'string'
+						? record.note.trim()
+						: '';
+			acts.push({ act: act.trim(), sections: normalizeSections(record.sections), relevance });
+		}
+		if (acts.length >= 6) break;
+	}
+	return acts;
 }
 
 export const POST: RequestHandler = async ({ request, fetch }) => {
@@ -91,7 +139,8 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 	const result: SpotterResponse = {
 		issues: normalizeList(parsed.issues),
 		doctrines: normalizeList(parsed.doctrines),
-		precedents: normalizeList(parsed.precedents)
+		precedents: normalizeList(parsed.precedents),
+		acts: normalizeActs(parsed.acts)
 	};
 
 	return json(result);

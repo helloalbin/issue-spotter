@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL } from '$app/env/private';
 import type { RequestHandler } from './$types';
 
 type SpotterResponse = {
@@ -6,9 +7,6 @@ type SpotterResponse = {
 	doctrines: string[];
 	precedents: string[];
 };
-
-const runtimeEnv =
-	(globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
 const SYSTEM_PROMPT =
 	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. Output JSON with keys: issues, doctrines, precedents. Each key must map to an array of short bullet-ready strings.';
@@ -39,13 +37,13 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 		return json({ error: 'Please keep the factual summary under 12,000 characters.' }, { status: 400 });
 	}
 
-	const openAiApiKey = runtimeEnv.OPENAI_API_KEY;
+	const openAiApiKey = OPENAI_API_KEY;
 	if (!openAiApiKey) {
 		return json({ error: 'Server is missing OPENAI_API_KEY configuration.' }, { status: 500 });
 	}
 
-	const baseUrl = runtimeEnv.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-	const model = runtimeEnv.OPENAI_MODEL || 'gpt-4o-mini';
+	const baseUrl = OPENAI_BASE_URL;
+	const model = OPENAI_MODEL;
 
 	let response: Response;
 

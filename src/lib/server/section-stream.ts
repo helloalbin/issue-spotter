@@ -2,12 +2,14 @@ import type { SpotSection } from '#lib/spotter.js';
 
 export type Section = SpotSection;
 const SECTIONS: readonly string[] = [
+	'update',
 	'summary',
 	'issues',
 	'doctrines',
 	'precedents',
 	'acts',
-	'counterArguments'
+	'counterArguments',
+	'openQuestions'
 ];
 
 /** Something the parser found in the model's JSON as it streamed in. */

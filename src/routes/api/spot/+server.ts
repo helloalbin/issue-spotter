@@ -18,6 +18,7 @@ import {
 	buildSystemPrompt,
 	buildUserText,
 	parseContext,
+	parsePrevious,
 	parseSkills
 } from '#lib/server/prompt.js';
 import { SectionParser } from '#lib/server/section-stream.js';
@@ -83,6 +84,10 @@ function normalizeCounterArguments(value: unknown): CounterArgument[] {
 		if (items.length >= 6) break;
 	}
 	return items;
+}
+
+function normalizeHeadline(value: unknown): string | undefined {
+	return typeof value === 'string' && value.trim() ? value.trim().slice(0, 140) : undefined;
 }
 
 function normalizeJurisdiction(value: unknown): string | undefined {
@@ -375,6 +380,8 @@ async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise
 }
 
 const MAX_ITEMS: Record<SpotSection, number> = {
+	update: 3,
+	openQuestions: 4,
 	summary: 5,
 	issues: 8,
 	doctrines: 8,
@@ -389,12 +396,14 @@ const MAX_ITEMS: Record<SpotSection, number> = {
  */
 async function analyze(
 	fetchFn: typeof fetch,
-	request: { system: string; user: string; maxTokens: number; skills: ActiveSkill[] },
+	request: { system: string; user: string; maxTokens: number; skills: ActiveSkill[]; followUp: boolean },
 	signal: AbortSignal,
 	emit: (event: SpotEvent) => void
 ): Promise<SpotterResult> {
 	const parser = new SectionParser();
 	const counts: Record<SpotSection, number> = {
+		update: 0,
+		openQuestions: 0,
 		summary: 0,
 		issues: 0,
 		doctrines: 0,
@@ -449,6 +458,11 @@ async function analyze(
 	}
 
 	return {
+		...(request.followUp && {
+			headline: normalizeHeadline(parsed.headline),
+			update: normalizeList(parsed.update).slice(0, 3),
+			openQuestions: normalizeList(parsed.openQuestions).slice(0, 4)
+		}),
 		...(request.skills.includes('summarize') && { summary: normalizeList(parsed.summary).slice(0, 5) }),
 		jurisdiction: normalizeJurisdiction(parsed.jurisdiction),
 		issues: normalizeList(parsed.issues),
@@ -472,12 +486,14 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	let facts = '';
 	let rawSkills: unknown;
 	let rawContext: unknown;
+	let rawPrevious: unknown;
 
 	try {
 		const body = await request.json();
 		facts = typeof body?.facts === 'string' ? body.facts : '';
 		rawSkills = body?.skills;
 		rawContext = body?.context;
+		rawPrevious = body?.previous;
 	} catch {
 		return Response.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
 	}
@@ -503,6 +519,8 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	}
 	const skills = parseSkills(rawSkills);
 	const context = parsedContext.context;
+	// An earlier analysis of the same case marks this as an update rather than a first reading.
+	const previous = parsePrevious(rawPrevious);
 
 	const db = env.DB;
 	if (!db) {
@@ -524,10 +542,11 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 
 	const trimmed = facts.trim();
 	const analysisRequest = {
-		system: buildSystemPrompt(skills, context.length > 0),
-		user: buildUserText(trimmed, context),
-		maxTokens: analysisTokens(ANALYSIS_MAX_TOKENS, skills),
-		skills
+		system: buildSystemPrompt(skills, context.length > 0, previous !== null),
+		user: buildUserText(trimmed, context, previous),
+		maxTokens: analysisTokens(ANALYSIS_MAX_TOKENS, skills, previous !== null),
+		skills,
+		followUp: previous !== null
 	};
 	const encoder = new TextEncoder();
 	let remaining = reservation.remaining;

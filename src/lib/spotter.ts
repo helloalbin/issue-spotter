@@ -17,6 +17,10 @@ export type Precedent = {
 export type CounterArgument = { issue: string; argument: string };
 
 export type SpotterResult = {
+	/** On an update: one line naming what the new facts change. */
+	headline?: string;
+	/** On an update: how the new facts change the analysis, in plain words. */
+	update?: string[];
 	/** Present when the Summarize skill was on. */
 	summary?: string[];
 	issues: string[];
@@ -27,10 +31,34 @@ export type SpotterResult = {
 	jurisdiction?: string;
 	/** Present when the Counter-args skill was on. */
 	counterArguments?: CounterArgument[];
+	/** On an update: facts still unknown that would change the analysis if established. */
+	openQuestions?: string[];
 };
+
+/**
+ * The earlier analysis of the same case, sent with a follow-up so the model can say what changed and
+ * the page can show it. Only the headings of each entry are needed.
+ */
+export type PreviousAnalysis = {
+	issues: string[];
+	doctrines: string[];
+	precedents: string[];
+	acts: string[];
+};
+
+export function previousOf(result: SpotterResult): PreviousAnalysis {
+	return {
+		issues: result.issues,
+		doctrines: result.doctrines,
+		precedents: result.precedents.map((precedent) => precedent.name),
+		acts: result.acts.map((entry) => entry.act)
+	};
+}
 
 /** Entries found so far while an analysis is still being written, by section. */
 export type Streamed = {
+	update: string[];
+	openQuestions: string[];
 	summary: string[];
 	counterArguments: CounterArgument[];
 	issues: string[];
@@ -89,6 +117,8 @@ export type QuotaInfo = {
 };
 
 export type SpotSection =
+	| 'update'
+	| 'openQuestions'
 	| 'summary'
 	| 'issues'
 	| 'doctrines'
@@ -98,7 +128,7 @@ export type SpotSection =
 
 /** One finished entry of a section, sent while the analysis is still being written. */
 export type SpotItem =
-	| { section: 'summary' | 'issues' | 'doctrines'; value: string }
+	| { section: 'update' | 'openQuestions' | 'summary' | 'issues' | 'doctrines'; value: string }
 	| { section: 'precedents'; value: Precedent }
 	| { section: 'acts'; value: ActReference }
 	| { section: 'counterArguments'; value: CounterArgument };

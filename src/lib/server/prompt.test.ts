@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { analysisTokens, buildSystemPrompt, buildUserText, parseContext, parseSkills } from './prompt.ts';
+import { analysisTokens, buildSystemPrompt, buildUserText, parseContext, parsePrevious, parseSkills } from './prompt.ts';
 
 const page = (over = {}) => ({ url: 'https://indiankanoon.org/doc/1/', title: 'M C Mehta vs Union Of India', text: 'The court held that ...', ...over });
 
@@ -59,4 +59,43 @@ test('rejects pages from other sites, bad sizes and too many', () => {
 test('a page of any length up to the limit, with its truncation flag, is kept', () => {
 	const parsed = parseContext([page({ text: 'x'.repeat(12000), truncated: true })]);
 	assert.ok(parsed.ok && parsed.context[0].truncated === true && parsed.context[0].text.length === 12000);
+});
+
+test('an update asks for a headline, what changed and open questions, and says to reuse wording', () => {
+	const prompt = buildSystemPrompt([], false, true);
+	assert.match(prompt, /jurisdiction, headline, update, issues, doctrines, precedents, acts, openQuestions\./);
+	assert.match(prompt, /headline is one short line/);
+	assert.match(prompt, /update must map/);
+	assert.match(prompt, /copy its wording exactly/);
+	assert.match(prompt, /openQuestions must map/);
+	const all = buildSystemPrompt(['summarize', 'counter-arguments'], false, true);
+	assert.match(all, /headline, update, summary, issues, doctrines, precedents, acts, counterArguments, openQuestions\./);
+	assert.doesNotMatch(buildSystemPrompt([], false, false), /headline|openQuestions/);
+});
+
+test('an update gets a larger token budget', () => {
+	assert.equal(analysisTokens(2000, [], true), 2450);
+	assert.equal(analysisTokens(2000, ['summarize'], true), 2750);
+});
+
+test('the earlier analysis follows the facts and any attached pages', () => {
+	const previous = { issues: ['Wrongful detention'], doctrines: [], precedents: ['D.K. Basu v. State of West Bengal'], acts: ['The Passports Act, 1967'] };
+	const text = buildUserText('first\n\nFurther facts: more', [], previous);
+	assert.ok(text.startsWith('first\n\nFurther facts: more\n\n--- Earlier analysis of this case ---'));
+	assert.match(text, /Issues:\n- Wrongful detention/);
+	assert.match(text, /Precedents:\n- D\.K\. Basu/);
+	assert.doesNotMatch(text, /Doctrines:/, 'an empty group is left out');
+	assert.match(text, /--- End of earlier analysis ---$/);
+});
+
+test('the earlier analysis is cut down to bounded short strings, and ignored when empty', () => {
+	assert.equal(parsePrevious(null), null);
+	assert.equal(parsePrevious('x'), null);
+	assert.equal(parsePrevious({ issues: [], doctrines: [], precedents: [], acts: [] }), null);
+	const big = parsePrevious({ issues: Array.from({ length: 30 }, (_, i) => `issue ${i} ` + 'x'.repeat(500)), doctrines: [3, '  ok  ', ''], precedents: 'no', acts: undefined });
+	assert.ok(big);
+	assert.equal(big.issues.length, 12);
+	assert.equal(big.issues[0].length, 300);
+	assert.deepEqual(big.doctrines, ['ok']);
+	assert.deepEqual(big.precedents, []);
 });

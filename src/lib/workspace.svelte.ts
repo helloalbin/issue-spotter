@@ -1,4 +1,6 @@
 import { auth } from '#lib/auth.svelte.js';
+import { activityStore } from '#lib/activity.svelte.js';
+import type { RunKind } from '#lib/activity.js';
 import { gatherSources } from '#lib/gather.js';
 import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
 import { SAMPLES } from '#lib/samples.js';
@@ -222,6 +224,19 @@ class Workspace {
 	}
 
 	#sampleIndex = 0;
+	/** When the analysis in progress began, so its time can be counted. */
+	#startedAt = 0;
+
+	/** Notes a finished run in the person's own activity, which lives in this browser only. */
+	#logRun(kind: RunKind, started: number, details: { skills?: string[]; hosts?: string[]; citations?: number; issues?: number; acts?: string[]; jurisdiction?: string } = {}) {
+		activityStore.record({ at: Date.now(), kind, ms: Date.now() - started, ...details });
+	}
+
+	/** The citations section of a verify report: how many cases it checked. */
+	#citationCount(brief: ResearchBrief): number {
+		return brief.report?.sections.find((section) => section.id === 'citations')?.children?.length ?? 0;
+	}
+
 	#abort: AbortController | null = null;
 	/** Tells one search from the next, so a stopped search cannot touch the state of a newer one. */
 	#run = 0;
@@ -554,6 +569,12 @@ class Workspace {
 			this.facts = '';
 			this.draftAttachments = [];
 			this.pending = null;
+			this.#logRun(event.result?.draft ? 'draft' : 'analysis', this.#startedAt, {
+				skills: this.runSkills,
+				issues: Array.isArray(event.result?.issues) ? event.result.issues.length : 0,
+				acts: (Array.isArray(event.result?.acts) ? event.result.acts : []).map((entry: { act?: string }) => entry?.act ?? '').filter(Boolean),
+				jurisdiction: typeof event.result?.jurisdiction === 'string' ? event.result.jurisdiction : undefined
+			});
 			// The answer is complete. Anything the server sends after it (verified links) fills in
 			// later, so the results are shown now instead of waiting for it.
 			this.isLoading = false;
@@ -621,6 +642,7 @@ class Workspace {
 		this.pending = added;
 		this.streamed = emptyStreamed();
 		this.runSkills = [...this.skills];
+		this.#startedAt = Date.now();
 		this.closed = [];
 		this.#meta = null;
 		this.#abort?.abort();
@@ -728,6 +750,7 @@ class Workspace {
 			return;
 		}
 
+		const started = Date.now();
 		this.isLoading = true;
 		this.researching = true;
 		this.researchStage = 'checking';
@@ -782,6 +805,7 @@ class Workspace {
 							topic,
 							brief: event.brief
 						});
+						this.#logRun('research', started, { skills: ['deep-research'], hosts: event.brief.sources.map((source) => source.host) });
 						this.facts = '';
 						this.researchMode = false;
 					} else if ('offTopic' in event) {
@@ -807,6 +831,7 @@ class Workspace {
 				finished = true;
 				// If the pages could not be read or written up, the first search brief is still worth having.
 				this.thread.push({ kind: 'research', added: '', attachments: [], topic, brief: done.brief ?? found.draft! });
+				this.#logRun('research', started, { skills: ['deep-research'], hosts: (done.brief ?? found.draft!).sources.map((source) => source.host) });
 				this.facts = '';
 				this.researchMode = false;
 				if (done.quota) this.researchQuota = done.quota;
@@ -944,6 +969,7 @@ class Workspace {
 		this.errorMessage = '';
 		this.notice = '';
 
+		const started = Date.now();
 		this.isLoading = true;
 		this.comparing = true;
 		this.compareStage = 'opening';
@@ -993,6 +1019,7 @@ class Workspace {
 						finished = true;
 						exchange.brief = event.brief;
 						exchange.state = 'done';
+						this.#logRun('compare', started, { skills: ['compare-cases'], hosts: event.brief.sources.map((source) => source.host) });
 					} else if ('error' in event) {
 						finished = true;
 						this.errorMessage = event.error;
@@ -1015,6 +1042,7 @@ class Workspace {
 				if (done.brief) {
 					exchange.brief = done.brief;
 					exchange.state = 'done';
+					this.#logRun('compare', started, { skills: ['compare-cases'], hosts: done.brief.sources.map((source) => source.host) });
 				} else this.errorMessage = done.error ?? 'The comparison could not be completed right now.';
 			}
 			if (!finished) this.errorMessage = 'The comparison ended unexpectedly. Please try again.';
@@ -1045,6 +1073,7 @@ class Workspace {
 			return;
 		}
 
+		const started = Date.now();
 		this.isLoading = true;
 		this.verifying = true;
 		this.verifyStage = 'reading';
@@ -1093,6 +1122,7 @@ class Workspace {
 					else if ('brief' in event) {
 						finished = true;
 						this.thread.push({ kind: 'verify', added: '', attachments: [], input, brief: event.brief });
+						this.#logRun('verify', started, { skills: ['verify-cites'], citations: this.#citationCount(event.brief), hosts: event.brief.sources.map((source) => source.host) });
 						this.facts = '';
 						this.verifyMode = false;
 					} else if ('error' in event) {
@@ -1116,6 +1146,7 @@ class Workspace {
 				if (done.quota) this.verifyQuota = done.quota;
 				if (done.brief) {
 					this.thread.push({ kind: 'verify', added: '', attachments: [], input, brief: done.brief });
+					this.#logRun('verify', started, { skills: ['verify-cites'], citations: this.#citationCount(done.brief), hosts: done.brief.sources.map((source) => source.host) });
 					this.facts = '';
 					this.verifyMode = false;
 				} else this.errorMessage = done.error ?? 'The check could not be completed right now.';

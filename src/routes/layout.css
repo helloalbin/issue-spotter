@@ -55,6 +55,12 @@
 	--avatar-to: #20232a;
 	--avatar-fg: #f5f6f7;
 
+	/* Activity heatmap, quietest to busiest. The busiest level is the primary text colour. */
+	--heat-0: #1e2022;
+	--heat-1: #333840;
+	--heat-2: #595e66;
+	--heat-3: #afb2b8;
+
 	/* Google's mark has fixed brand colors in both themes. */
 	--brand-google-blue: #4285f4;
 	--brand-google-green: #34a853;
@@ -93,6 +99,11 @@
 	--btn: #26292e;
 	--btn-fg: #f5f6f7;
 	--btn-border: #0000001f;
+
+	--heat-0: #eceef0;
+	--heat-1: #cfd3d9;
+	--heat-2: #9ea3aa;
+	--heat-3: #5e626a;
 
 	--danger: #c0362c;
 	--danger-fg: #ffffff;
@@ -152,6 +163,10 @@
 	--color-avatar-from: var(--avatar-from);
 	--color-avatar-to: var(--avatar-to);
 	--color-avatar-fg: var(--avatar-fg);
+	--color-heat-0: var(--heat-0);
+	--color-heat-1: var(--heat-1);
+	--color-heat-2: var(--heat-2);
+	--color-heat-3: var(--heat-3);
 
 	--color-brand-google-blue: var(--brand-google-blue);
 	--color-brand-google-green: var(--brand-google-green);

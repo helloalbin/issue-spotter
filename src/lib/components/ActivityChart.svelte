@@ -1,0 +1,130 @@
+<script lang="ts">
+	import { heatmap, weekly } from '#lib/activity.js';
+	import type { Activity } from '#lib/activity.js';
+
+	type Props = { activity: Activity; now: number };
+	let { activity, now }: Props = $props();
+
+	type View = 'daily' | 'weekly' | 'cumulative';
+	const VIEWS: { id: View; label: string }[] = [
+		{ id: 'daily', label: 'Daily' },
+		{ id: 'weekly', label: 'Weekly' },
+		{ id: 'cumulative', label: 'Cumulative' }
+	];
+	let view = $state<View>('daily');
+
+	let map = $derived(heatmap(activity, now));
+	let bars = $derived(weekly(activity, now, 26));
+	let shown = $derived(view === 'cumulative' ? bars.map((bar) => ({ ...bar, value: bar.total })) : bars.map((bar) => ({ ...bar, value: bar.count })));
+	let tallest = $derived(Math.max(1, ...shown.map((bar) => bar.value)));
+	/** Days with activity, for people who cannot see colour. */
+	let activeDays = $derived(map.columns.flat().filter((cell) => cell.count > 0));
+
+	const LEVEL = ['bg-heat-0', 'bg-heat-1', 'bg-heat-2', 'bg-heat-3', 'bg-text-primary'];
+	const plural = (n: number) => `${n.toLocaleString()} ${n === 1 ? 'analysis' : 'analyses'}`;
+	const dateLabel = (key: string) => {
+		const [y, m, d] = key.split('-').map(Number);
+		const sameYear = y === new Date(now).getFullYear();
+		return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+	};
+
+	let card = $state<HTMLDivElement>();
+	let tip = $state<{ x: number; y: number; title: string; value: string } | null>(null);
+
+	/** Shows the tooltip above whatever the pointer is on, inside the card. */
+	function show(event: Event, title: string, value: string) {
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const outer = card!.getBoundingClientRect();
+		tip = { x: box.left - outer.left + box.width / 2, y: box.top - outer.top, title, value };
+	}
+</script>
+
+<div class="flex flex-col gap-3.5">
+	<div class="flex items-center justify-between gap-3">
+		<h2 class="text-md font-semibold text-text-primary">Analysis activity</h2>
+		<div role="tablist" aria-label="Activity view" class="flex gap-0.5 rounded-md border border-border-subtle bg-surface-2 p-[3px]">
+			{#each VIEWS as entry}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={view === entry.id}
+					onclick={() => ((view = entry.id), (tip = null))}
+					class="rounded-sm px-[11px] py-[5px] text-caption transition {view === entry.id ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}"
+				>
+					{entry.label}
+				</button>
+			{/each}
+		</div>
+	</div>
+
+	<div bind:this={card} class="relative rounded-lg border border-border-subtle bg-surface-1 p-4" onmouseleave={() => (tip = null)} role="presentation">
+		{#if view === 'daily'}
+			<div class="overflow-x-auto">
+				<div class="flex min-w-[640px] flex-col gap-2.5" role="img" aria-label="{plural(map.total)} in the last 12 months, on {activeDays.length} {activeDays.length === 1 ? 'day' : 'days'}">
+					<div class="grid px-0.5" style="grid-template-columns: repeat(53, minmax(0, 1fr))" aria-hidden="true">
+						{#each map.months as month, at}
+							{#if (map.months[at + 1]?.column ?? 99) - month.column >= 3}
+								<span class="text-[10px] leading-none whitespace-nowrap text-text-muted" style="grid-column: {month.column + 1}">{month.label}</span>
+							{/if}
+						{/each}
+					</div>
+					<div class="grid gap-[3px]" style="grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr)" aria-hidden="true">
+						{#each map.columns as column}
+							{#each column as cell}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div
+									class="rounded-[2px] {cell.future ? 'invisible' : LEVEL[cell.level]}"
+									onpointerenter={(event) => !cell.future && show(event, dateLabel(cell.date), plural(cell.count))}
+									onpointerdown={(event) => !cell.future && show(event, dateLabel(cell.date), plural(cell.count))}
+								></div>
+							{/each}
+						{/each}
+					</div>
+				</div>
+			</div>
+			<table class="sr-only">
+				<caption>Analyses per day over the last 12 months</caption>
+				<thead><tr><th>Day</th><th>Analyses</th></tr></thead>
+				<tbody>
+					{#each activeDays as cell}
+						<tr><td>{dateLabel(cell.date)}</td><td>{cell.count}</td></tr>
+					{:else}
+						<tr><td colspan="2">No analyses yet.</td></tr>
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<div class="flex h-32 items-end gap-[3px]" aria-hidden="true">
+				{#each shown as bar}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="flex-1 rounded-[2px] {bar.value > 0 ? (bar.value === tallest ? 'bg-text-primary' : 'bg-heat-3') : 'bg-heat-0'}"
+						style="height: {bar.value > 0 ? Math.max(4, (bar.value / tallest) * 100) : 3}%"
+						onpointerenter={(event) => show(event, bar.label, view === 'weekly' ? plural(bar.count) : `${bar.total.toLocaleString()} in all`)}
+						onpointerdown={(event) => show(event, bar.label, view === 'weekly' ? plural(bar.count) : `${bar.total.toLocaleString()} in all`)}
+					></div>
+				{/each}
+			</div>
+			<table class="sr-only">
+				<caption>{view === 'weekly' ? 'Analyses per week' : 'Analyses in total, by week'}, last 26 weeks</caption>
+				<thead><tr><th>Week</th><th>{view === 'weekly' ? 'Analyses' : 'Total so far'}</th></tr></thead>
+				<tbody>
+					{#each shown as bar}
+						<tr><td>{bar.label}</td><td>{bar.value}</td></tr>
+					{/each}
+				</tbody>
+			</table>
+		{/if}
+
+		{#if tip}
+			<div
+				class="pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-full flex-col gap-px rounded-md border border-border-default bg-surface-3 px-3 py-[9px] whitespace-nowrap shadow-overlay"
+				style="left: {tip.x}px; top: {tip.y - 6}px"
+				role="status"
+			>
+				<span class="text-[13px] text-text-primary">{tip.title}</span>
+				<span class="text-caption text-text-tertiary">{tip.value}</span>
+			</div>
+		{/if}
+	</div>
+</div>

@@ -63,6 +63,14 @@
 		not stored by us. Copying or downloading it happens in your browser.
 	</p>
 
+	<h2>Your activity numbers</h2>
+	<p>
+		The profile page shows counts such as analyses run, issues spotted and your streaks. They are
+		worked out in your browser from a small tally it keeps in its own storage, under your email
+		address if you are signed in. We do not receive or store them, they do not follow you to another
+		device, and you can clear them with "Reset my activity data" or by clearing this site's data.
+	</p>
+
 	<h2>How pages are read</h2>
 	<p>
 		When a feature needs to read court or statute pages, our server fetches each page and passes it

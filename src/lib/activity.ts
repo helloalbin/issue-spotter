@@ -1,0 +1,252 @@
+/**
+ * What a person has done in the app, kept in their browser and nowhere else. It is a small tally, not
+ * a log: counts per day, a few totals and a few "most used" maps. Everything on the profile page is
+ * worked out from it. It is pure, so it can be tested without a browser.
+ */
+
+export type RunKind = 'analysis' | 'draft' | 'research' | 'compare' | 'verify';
+
+export type Activity = {
+	version: 1;
+	/** Runs and issues spotted per local calendar day, "YYYY-MM-DD". */
+	days: Record<string, { runs: number; issues: number }>;
+	/** The longest single run, in milliseconds. */
+	longestMs: number;
+	/** How many times each skill was used. */
+	skills: Record<string, number>;
+	acts: Record<string, number>;
+	jurisdictions: Record<string, number>;
+	/** Pages read, by site. */
+	sites: Record<string, number>;
+	/** Citations the person had checked. */
+	citations: number;
+};
+
+/** One finished run. Every completed result counts, whatever the kind. */
+export type Run = {
+	at: number;
+	kind: RunKind;
+	ms?: number;
+	issues?: number;
+	skills?: string[];
+	acts?: string[];
+	jurisdiction?: string;
+	hosts?: string[];
+	citations?: number;
+};
+
+const MAX_KEYS = 200;
+export const emptyActivity = (): Activity => ({ version: 1, days: {}, longestMs: 0, skills: {}, acts: {}, jurisdictions: {}, sites: {}, citations: 0 });
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** The local calendar day of a moment, so a run at 11:50 pm belongs to that evening. */
+export function dayKey(at: number): string {
+	const d = new Date(at);
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** A number for a day that moves by one each day whatever the clocks do. */
+function dayIndex(key: string): number {
+	const [y, m, d] = key.split('-').map(Number);
+	return Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+}
+
+const keyOfIndex = (index: number) => {
+	const d = new Date(index * 86_400_000);
+	return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+};
+
+/** The few sites worth naming, from the address a page was read at. */
+export function siteOf(host: string): string | null {
+	const h = host.toLowerCase().replace(/^www\./, '');
+	if (h.endsWith('indiankanoon.org')) return 'Indian Kanoon';
+	if (h.endsWith('sci.gov.in') || h.endsWith('sci.in')) return 'Supreme Court of India';
+	if (h.endsWith('indiacode.nic.in') || h.endsWith('indiacode.gov.in')) return 'India Code';
+	if (/highcourt|hcmadras|mhc\.tn|mphc|hckerala|karnatakajudiciary/.test(h)) return 'High Courts';
+	return null;
+}
+
+const bump = (map: Record<string, number>, key: string, by = 1) => ({ ...map, [key]: (map[key] ?? 0) + by });
+
+/** A map kept to its most used entries, so it cannot grow without bound. */
+function pruned(map: Record<string, number>): Record<string, number> {
+	const entries = Object.entries(map);
+	if (entries.length <= MAX_KEYS) return map;
+	return Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, MAX_KEYS));
+}
+
+/** The tally with one more run in it. The input is not changed. */
+export function recordRun(activity: Activity, run: Run): Activity {
+	const key = dayKey(run.at);
+	const day = activity.days[key] ?? { runs: 0, issues: 0 };
+	let next: Activity = {
+		...activity,
+		days: { ...activity.days, [key]: { runs: day.runs + 1, issues: day.issues + Math.max(0, run.issues ?? 0) } },
+		longestMs: Math.max(activity.longestMs, Math.max(0, run.ms ?? 0)),
+		citations: activity.citations + Math.max(0, run.citations ?? 0)
+	};
+	for (const skill of new Set(run.skills ?? [])) next = { ...next, skills: bump(next.skills, skill) };
+	for (const act of new Set((run.acts ?? []).map((name) => name.trim()).filter(Boolean))) next = { ...next, acts: pruned(bump(next.acts, act.slice(0, 120))) };
+	if (run.jurisdiction?.trim()) next = { ...next, jurisdictions: pruned(bump(next.jurisdictions, run.jurisdiction.trim().slice(0, 80))) };
+	for (const host of run.hosts ?? []) {
+		const site = siteOf(host);
+		if (site) next = { ...next, sites: bump(next.sites, site) };
+	}
+	return next;
+}
+
+/**
+ * The longest run of days in a row with activity, and the run that is still going. A run is still
+ * going if today or yesterday had activity: someone who has not yet used the app today has not lost
+ * their streak.
+ */
+export function streaks(days: Activity['days'], now: number): { longest: number; current: number } {
+	const active = [...new Set(Object.entries(days).filter(([, d]) => d.runs > 0).map(([key]) => dayIndex(key)))].sort((a, b) => a - b);
+	let longest = 0;
+	let run = 0;
+	for (let i = 0; i < active.length; i++) {
+		run = i > 0 && active[i] === active[i - 1] + 1 ? run + 1 : 1;
+		longest = Math.max(longest, run);
+	}
+	const today = dayIndex(dayKey(now));
+	const set = new Set(active);
+	let at = set.has(today) ? today : set.has(today - 1) ? today - 1 : null;
+	let current = 0;
+	while (at !== null && set.has(at)) {
+		current += 1;
+		at -= 1;
+	}
+	return { longest, current };
+}
+
+export type Totals = { analyses: number; issues: number; longestMs: number; longestStreak: number; currentStreak: number; skillsUsed: number; citations: number };
+
+export function totalsOf(activity: Activity, now: number): Totals {
+	const days = Object.values(activity.days);
+	const { longest, current } = streaks(activity.days, now);
+	return {
+		analyses: days.reduce((sum, d) => sum + d.runs, 0),
+		issues: days.reduce((sum, d) => sum + d.issues, 0),
+		longestMs: activity.longestMs,
+		longestStreak: longest,
+		currentStreak: current,
+		skillsUsed: Object.values(activity.skills).filter((n) => n > 0).length,
+		citations: activity.citations
+	};
+}
+
+/** "19m 35s", "45s", "1h 2m": a run time for people. */
+export function formatDuration(ms: number): string {
+	if (!ms || ms < 1000) return ms > 0 ? '<1s' : '—';
+	const total = Math.round(ms / 1000);
+	const h = Math.floor(total / 3600);
+	const m = Math.floor((total % 3600) / 60);
+	const s = total % 60;
+	if (h > 0) return `${h}h ${m}m`;
+	return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+/** The most used entry and its share of all uses, or null when there are none. */
+export function topShare(map: Record<string, number>): { name: string; pct: number } | null {
+	const entries = Object.entries(map).filter(([, n]) => n > 0);
+	if (entries.length === 0) return null;
+	const total = entries.reduce((sum, [, n]) => sum + n, 0);
+	const [name, count] = entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+	return { name, pct: Math.round((count / total) * 100) };
+}
+
+export type Cell = { date: string; count: number; level: 0 | 1 | 2 | 3 | 4; future: boolean };
+
+/** 0 for a quiet day, 1 to 4 by how it compares with the busiest day in view. */
+export function levelOf(count: number, max: number): Cell['level'] {
+	if (count <= 0 || max <= 0) return 0;
+	return Math.max(1, Math.min(4, Math.ceil((count / max) * 4))) as Cell['level'];
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A year of days as columns of weeks (Sunday to Saturday), the last column holding today, with a
+ * month label over the first column of each month.
+ */
+export function heatmap(activity: Activity, now: number, weeks = 53): { columns: Cell[][]; months: { label: string; column: number }[]; max: number; total: number } {
+	const today = dayIndex(dayKey(now));
+	const weekday = new Date(now).getDay();
+	const start = today - weekday - (weeks - 1) * 7;
+	let max = 0;
+	let total = 0;
+	for (let i = start; i <= today; i++) {
+		const count = activity.days[keyOfIndex(i)]?.runs ?? 0;
+		max = Math.max(max, count);
+		total += count;
+	}
+
+	const columns: Cell[][] = [];
+	const months: { label: string; column: number }[] = [];
+	let lastMonth = -1;
+	for (let w = 0; w < weeks; w++) {
+		const column: Cell[] = [];
+		for (let d = 0; d < 7; d++) {
+			const index = start + w * 7 + d;
+			const date = keyOfIndex(index);
+			const future = index > today;
+			const count = future ? 0 : (activity.days[date]?.runs ?? 0);
+			column.push({ date, count, level: levelOf(count, max), future });
+		}
+		columns.push(column);
+		const month = Number(column[0].date.slice(5, 7)) - 1;
+		if (month !== lastMonth) {
+			months.push({ label: MONTHS[month], column: w });
+			lastMonth = month;
+		}
+	}
+	return { columns, months, max, total };
+}
+
+export type Bar = { label: string; count: number; total: number };
+
+/** Runs per week for the last `weeks` weeks, and the running total at the end of each. */
+export function weekly(activity: Activity, now: number, weeks = 26): Bar[] {
+	const today = dayIndex(dayKey(now));
+	const start = today - new Date(now).getDay() - (weeks - 1) * 7;
+	let before = 0;
+	for (const [key, d] of Object.entries(activity.days)) if (dayIndex(key) < start) before += d.runs;
+	const bars: Bar[] = [];
+	let running = before;
+	for (let w = 0; w < weeks; w++) {
+		let count = 0;
+		for (let d = 0; d < 7; d++) count += activity.days[keyOfIndex(start + w * 7 + d)]?.runs ?? 0;
+		running += count;
+		const first = keyOfIndex(start + w * 7);
+		bars.push({ label: `Week of ${MONTHS[Number(first.slice(5, 7)) - 1]} ${Number(first.slice(8))}`, count, total: running });
+	}
+	return bars;
+}
+
+/** What is read back from storage, made safe: anything that is not the right shape is dropped. */
+export function parseActivity(raw: string | null): Activity {
+	if (!raw) return emptyActivity();
+	try {
+		const data = JSON.parse(raw);
+		if (data?.version !== 1 || typeof data.days !== 'object' || data.days === null) return emptyActivity();
+		const counts = (value: unknown): Record<string, number> =>
+			Object.fromEntries(Object.entries(value && typeof value === 'object' ? value : {}).filter(([, n]) => Number.isFinite(n) && (n as number) >= 0).slice(0, MAX_KEYS)) as Record<string, number>;
+		const days: Activity['days'] = {};
+		for (const [key, d] of Object.entries(data.days as Record<string, any>)) {
+			if (/^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(d?.runs) && d.runs >= 0) days[key] = { runs: d.runs, issues: Number.isFinite(d?.issues) && d.issues >= 0 ? d.issues : 0 };
+		}
+		return {
+			version: 1,
+			days,
+			longestMs: Number.isFinite(data.longestMs) && data.longestMs > 0 ? data.longestMs : 0,
+			skills: counts(data.skills),
+			acts: counts(data.acts),
+			jurisdictions: counts(data.jurisdictions),
+			sites: counts(data.sites),
+			citations: Number.isFinite(data.citations) && data.citations > 0 ? data.citations : 0
+		};
+	} catch {
+		return emptyActivity();
+	}
+}

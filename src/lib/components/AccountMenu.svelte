@@ -25,9 +25,9 @@
 	let helpPlace = $state({ left: 0, top: 0 });
 
 	/** Account items that are not built yet are shown, so the menu matches the design, but cannot be used. */
-	const account: { label: string; icon: IconName }[] = [
+	const account: { label: string; icon: IconName; href?: string }[] = [
 		{ label: 'Upgrade plan', icon: 'sparkles' },
-		{ label: 'Profile', icon: 'circleUser' },
+		{ label: 'Profile', icon: 'circleUser', href: '/profile' },
 		{ label: 'Settings', icon: 'settings' }
 	];
 
@@ -159,11 +159,18 @@
 		<div class="h-px bg-border-subtle"></div>
 
 		{#each account as entry}
-			<button type="button" role="menuitem" aria-disabled="true" title="Coming soon" onmouseenter={() => (helpOpen = false)} class="{itemClass} cursor-not-allowed opacity-60 hover:bg-transparent hover:text-text-secondary">
-				<Icon name={entry.icon} size={17} class="text-text-tertiary" />
-				<span class="flex-1">{entry.label}</span>
-				<span class="text-[10px] text-text-tertiary">Soon</span>
-			</button>
+			{#if entry.href}
+				<a href={entry.href} role="menuitem" onclick={() => (close(), onNavigate?.())} onmouseenter={() => (helpOpen = false)} class={itemClass}>
+					<Icon name={entry.icon} size={17} class="text-text-tertiary" />
+					<span class="flex-1">{entry.label}</span>
+				</a>
+			{:else}
+				<button type="button" role="menuitem" aria-disabled="true" title="Coming soon" onmouseenter={() => (helpOpen = false)} class="{itemClass} cursor-not-allowed opacity-60 hover:bg-transparent hover:text-text-secondary">
+					<Icon name={entry.icon} size={17} class="text-text-tertiary" />
+					<span class="flex-1">{entry.label}</span>
+					<span class="text-[10px] text-text-tertiary">Soon</span>
+				</button>
+			{/if}
 		{/each}
 
 		<button

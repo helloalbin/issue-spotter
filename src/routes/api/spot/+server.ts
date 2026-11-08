@@ -66,6 +66,7 @@ function normalizeActs(value: unknown): ActReference[] {
 class SpotError extends Error {}
 
 type ChatOptions = {
+	label: 'classifier' | 'analysis';
 	system: string;
 	user: string;
 	maxTokens: number;
@@ -73,7 +74,12 @@ type ChatOptions = {
 	jsonMode?: boolean;
 };
 
-async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<string> {
+/** Token counts as reported by the provider. Null when the provider omits them. */
+type Usage = { promptTokens: number | null; completionTokens: number | null };
+
+type ChatResult = { content: string; usage: Usage };
+
+async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<ChatResult> {
 	let response: Response;
 
 	try {
@@ -111,13 +117,21 @@ async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<string
 		throw new SpotError('Model returned an empty response.');
 	}
 
-	return content;
+	const usage: Usage = {
+		promptTokens: typeof payload?.usage?.prompt_tokens === 'number' ? payload.usage.prompt_tokens : null,
+		completionTokens:
+			typeof payload?.usage?.completion_tokens === 'number' ? payload.usage.completion_tokens : null
+	};
+	console.log(JSON.stringify({ event: 'llm_usage', call: options.label, model: OPENAI_MODEL, ...usage }));
+
+	return { content, usage };
 }
 
 /** Fails open: if the classifier errors or answers unclearly, the analysis proceeds. */
 async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise<boolean> {
 	try {
-		const answer = await chat(fetchFn, {
+		const { content: answer } = await chat(fetchFn, {
+			label: 'classifier',
 			system: CLASSIFIER_PROMPT,
 			user: facts,
 			maxTokens: CLASSIFIER_MAX_TOKENS,
@@ -130,7 +144,8 @@ async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise
 }
 
 async function analyze(fetchFn: typeof fetch, facts: string): Promise<SpotterResult> {
-	const content = await chat(fetchFn, {
+	const { content } = await chat(fetchFn, {
+		label: 'analysis',
 		system: SYSTEM_PROMPT,
 		user: facts,
 		maxTokens: ANALYSIS_MAX_TOKENS,

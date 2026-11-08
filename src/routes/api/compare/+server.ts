@@ -23,7 +23,7 @@ import { compareSubjectFor, grantSubject, tierOf, writeModelFor } from '#lib/ser
 import { post, readAnswer, writerBody } from '#lib/server/openai.js';
 import { fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
-import { RESEARCH_DOMAINS, cleanUrl, isOfficialHost } from '#lib/server/research.js';
+import { RESEARCH_DOMAINS, cleanUrl, isDocumentUrl, isOfficialHost } from '#lib/server/research.js';
 import { hostOf, isAllowedHost } from '#lib/server/verify.js';
 import { COMPARE_SCHEMA, buildReport, parseDraft, reportTally } from '#lib/server/writer.js';
 import type { SourceText } from '#lib/server/writer.js';
@@ -44,7 +44,7 @@ function parseCases(raw: unknown): Chosen[] | null {
 		const url = typeof entry?.url === 'string' ? cleanUrl(entry.url.trim()) : '';
 		const name = typeof entry?.name === 'string' ? entry.name.trim().slice(0, 200) : '';
 		const host = url ? hostOf(url) : null;
-		if (!name || !host || !isAllowedHost(host, RESEARCH_DOMAINS) || isPdfUrl(url)) return null;
+		if (!name || !host || !isAllowedHost(host, RESEARCH_DOMAINS) || isPdfUrl(url) || !isDocumentUrl(url)) return null;
 		cases.push({ url, name });
 	}
 	return cases[0].url === cases[1].url ? null : cases;
@@ -162,7 +162,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 						for (const { url } of answer.urls) {
 							const clean = cleanUrl(url);
 							const host = hostOf(clean);
-							if (host && isAllowedHost(host, RESEARCH_DOMAINS) && !isPdfUrl(clean) && !(inBrowser ? chosen!.some((entry) => entry.url === clean) : pages.some((page) => page.url === clean)) && !treatmentUrls.includes(clean)) {
+							if (host && isAllowedHost(host, RESEARCH_DOMAINS) && !isPdfUrl(clean) && isDocumentUrl(clean) && !(inBrowser ? chosen!.some((entry) => entry.url === clean) : pages.some((page) => page.url === clean)) && !treatmentUrls.includes(clean)) {
 								treatmentUrls.push(clean);
 							}
 						}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildBrief, cleanUrl, isOfficialHost, sourceTitle, splitSentences, uncitedCount } from './research.ts';
+import { buildBrief, cleanUrl, isDocumentUrl, isOfficialHost, sourceTitle, splitSentences, uncitedCount } from './research.ts';
 
 const cite = (text: string, link: string, url: string, title = 'Page') => {
 	const marker = `([${link}](${url}))`;
@@ -105,4 +105,13 @@ test('single-asterisk emphasis is removed but a footnote star or a product is no
 	const brief = buildBrief('t', [{ text, annotations: [] }], 0);
 	const first = brief.blocks[0].kind === 'paragraph' ? brief.blocks[0].sentences[0].text : '';
 	assert.equal(first, 'The Court in Pankaj Bansal held that written grounds are due.');
+});
+
+test('Indian Kanoon listings are not documents, but a judgment page and other sites are', () => {
+	assert.equal(isDocumentUrl('https://indiankanoon.org/doc/189692408/'), true);
+	assert.equal(isDocumentUrl('https://indiankanoon.org/search/?formInput=citedby%3A+189692408'), false);
+	assert.equal(isDocumentUrl('https://indiankanoon.org/doc/189692408/?type=print'), true);
+	assert.equal(isDocumentUrl('https://indiankanoon.org/browse/'), false);
+	assert.equal(isDocumentUrl('https://api.sci.gov.in/supremecourt/2023/1/a.pdf'), true);
+	assert.equal(isDocumentUrl('nonsense'), false);
 });

@@ -7,6 +7,7 @@ import { consumeGrant, signingKey } from '#lib/server/grants.js';
 import { grantSubject, tierOf, verifySubjectFor, writeModelFor } from '#lib/server/identity.js';
 import { intakeSources, sourceOf } from '#lib/server/intake.js';
 import { quotaInfo, release } from '#lib/server/quota.js';
+import { closestPassage, quoteSupported } from '#lib/server/ground.js';
 import { readGrant } from '#lib/server/token.js';
 import { buildVerifyReport, normalizeItems } from '#lib/server/verify-cites.js';
 import type { Located } from '#lib/server/verify-cites.js';
@@ -88,6 +89,12 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				}
 				const ran = await checkSupport(fetch, writeModelFor(tierOf(locals)) ?? DEEP_RESEARCH_MODEL ?? OPENAI_MODEL, rows, [...used.values()].sort((a, b) => a.n - b.n), deadline.signal);
 
+				if (import.meta.env.DEV) {
+					for (const [id, verdict] of ran.support) {
+						const read = intake.find((source) => source.n === Number(itemSource[id]));
+						console.log(JSON.stringify({ event: 'verify_support_debug', id, verdict: verdict.verdict, quote: verdict.quote.slice(0, 500), excerptHasStart: read ? read.excerpt.includes("directed to furnish the grounds of arrest in writing as a matter of course") : null, onExcerpt: read ? quoteSupported(verdict.quote, read.excerpt) : null, snapped: read ? !!closestPassage(verdict.quote, read.excerpt) : null }));
+					}
+				}
 				let report = buildVerifyReport(items, located, ran.support, { supportChecked: ran.checked });
 				report = await attestReport(fetch, report, new Map(intake.filter((s) => s.kind === 'pdf').map((s) => [s.n, s.url])), deadline.signal);
 				report = { ...report, readIn: 'browser' };

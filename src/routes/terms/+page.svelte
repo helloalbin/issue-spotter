@@ -26,6 +26,16 @@
 		responsible for what you do with it.
 	</p>
 
+	<h2>Reports read in your browser</h2>
+	<p>
+		Reports are checked against pages as read in your browser, and the text your browser reads is
+		sent to us for checking. A person who alters that text could produce a report that looks
+		verified when it is not, so <strong>a screenshot or an exported file of a report is not proof
+		that a case says what the report claims</strong>. Open the cited page and read the passage
+		yourself. We fingerprint each file we fetch so that you can tell which version a report used;
+		the fingerprint does not prove the text taken from it is accurate.
+	</p>
+
 	<h2>Research briefs are not verified advice</h2>
 	<p>
 		Deep research writes a brief from pages found on court and statute websites and links each

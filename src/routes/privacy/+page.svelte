@@ -63,6 +63,16 @@
 		not stored by us. Copying or downloading it happens in your browser.
 	</p>
 
+	<h2>How pages are read</h2>
+	<p>
+		When a feature needs to read court or statute pages, our server fetches each page and passes it
+		straight on to your browser, which reads it, including any PDF, and chooses the passages that
+		matter. Only those passages, the page title and the opening of the text are sent back to us and
+		on to the AI model provider. We do not store them. For a PDF, we also send its web address to
+		the provider so that it can check quoted passages against the official file. We record a
+		fingerprint (a hash) of each file and the time we fetched it, which appears in your report.
+	</p>
+
 	<h2>Deep research</h2>
 	<p>
 		Deep research sends your case and the point you ask about to the AI model provider, which

@@ -48,11 +48,11 @@ export function claimsOf(brief: ResearchBrief): Claim[] {
  * The sources worth reading: the ones that carry the most claims, official pages before copies,
  * up to a limit. Reading is what costs, so the busiest pages come first.
  */
-export function pickSources(brief: ResearchBrief, limit: number): ResearchSource[] {
+export function pickSources(brief: ResearchBrief, limit: number, usable: (url: string) => boolean = () => true): ResearchSource[] {
 	const claims = claimsOf(brief);
 	const load = (n: number) => claims.filter((claim) => claim.cites.includes(n)).length;
 	return [...brief.sources]
-		.filter((source) => load(source.n) > 0)
+		.filter((source) => load(source.n) > 0 && usable(source.url))
 		.sort((a, b) => Number(b.official) - Number(a.official) || load(b.n) - load(a.n) || a.n - b.n)
 		.slice(0, Math.max(0, limit));
 }

@@ -112,7 +112,15 @@
 		since been overruled.
 	</p>
 
-	<h2>10. What to keep in mind</h2>
+	<h2>10. Where pages are read</h2>
+	<p>
+		The pages and PDFs a report is built from are fetched through {SITE_NAME} but read in your own
+		browser, which picks out the relevant passages. Each source in a report shows a fingerprint of the
+		file as it was fetched and when. Passages taken from a PDF are checked a second time by a model
+		reading the official PDF.
+	</p>
+
+	<h2>11. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case

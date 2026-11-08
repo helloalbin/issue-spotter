@@ -7,7 +7,7 @@ import { identifySubjectFor } from '#lib/server/identity.js';
 import { post, readAnswer } from '#lib/server/openai.js';
 import { PageError, fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
-import { RESEARCH_DOMAINS, cleanUrl, isOfficialHost } from '#lib/server/research.js';
+import { RESEARCH_DOMAINS, cleanUrl, isDocumentUrl, isOfficialHost } from '#lib/server/research.js';
 import { hostOf, isAllowedHost } from '#lib/server/verify.js';
 import type { CaseCandidate } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
@@ -99,7 +99,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				const host = url ? hostOf(url) : null;
 				const none = { ...base, url: '', title: '', host: host ?? '', official: false, verified: false, readable: false };
 
-				if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS)) return { ...none, problem: 'I could not find a judgment page for this case.' };
+				if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS) || !isDocumentUrl(url)) return { ...none, problem: 'I could not find a judgment page for this case.' };
 				const official = isOfficialHost(host);
 				if (isPdfUrl(url)) {
 					return { ...none, url, host, official, problem: 'Only an official PDF was found, which the app cannot read yet. Try the Indian Kanoon citation.' };

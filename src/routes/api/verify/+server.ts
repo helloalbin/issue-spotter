@@ -18,7 +18,7 @@ import { post, readAnswer } from '#lib/server/openai.js';
 import { checkSupport } from '#lib/server/verify-run.js';
 import { fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
-import { RESEARCH_DOMAINS, cleanUrl, isOfficialHost } from '#lib/server/research.js';
+import { RESEARCH_DOMAINS, cleanUrl, isDocumentUrl, isOfficialHost } from '#lib/server/research.js';
 import {
 	FIND_INSTRUCTIONS,
 	FIND_RETRY_INSTRUCTIONS,
@@ -192,7 +192,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 						const raw = urls.get(item.id);
 						const url = raw ? cleanUrl(raw) : '';
 						const host = url ? hostOf(url) : null;
-						if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS)) continue;
+						if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS) || !isDocumentUrl(url)) continue;
 						if (!urlList.includes(url)) urlList.push(url);
 						itemSource[item.id] = urlList.indexOf(url) + 1;
 					}
@@ -224,7 +224,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 					const raw = urls.get(item.id);
 					const url = raw ? cleanUrl(raw) : '';
 					const host = url ? hostOf(url) : null;
-					if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS)) continue;
+					if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS) || !isDocumentUrl(url)) continue;
 					if (isPdfUrl(url)) {
 						unreadable.add(item.id);
 						continue;

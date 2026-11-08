@@ -68,7 +68,7 @@ export const COMPARE_INSTRUCTIONS =
 	'SOURCE [1] is the first judgment and SOURCE [2] the second. Any other SOURCE is a decision that may have overturned, reversed or doubted one of them. ' +
 	'Use ONLY what those texts say; never your own knowledge, and never the leads except to know what to look for. ' +
 	'Each statement is {text, source, quote}: text is one plain sentence of at most 45 words; source is the number n of the SOURCE it rests on; ' +
-	'quote is copied exactly, character for character, from that SOURCE, 8 to 40 words, the passage that supports it. Join two passages with "…". Never paraphrase inside a quote, and never run a quote across a line like "[… 12 paragraphs omitted …]". ' +
+	'quote is copied exactly, character for character, from that SOURCE, 8 to 40 words, the passage that supports it. Join two passages with "…" (at most once, each at least five words; never stitch short fragments). Never paraphrase inside a quote, and never run a quote across a line like "[… 12 paragraphs omitted …]". ' +
 	'A statement you cannot support with a quote does not belong in the report: leave it out and, if it matters, name it in notConfirmed. A statement about one judgment rests on that judgment\'s own SOURCE. ' +
 	'Fields: title is "Case A v. Case B" in at most 15 words. synopsis is 3 to 5 numbered points on how the two judgments relate, each a complete sentence and each saying something the others do not. ' +
 	'cases has one group per judgment (name as "Party v. Party (Court, year)" as its SOURCE gives it) with up to 3 statements: the court, the bench or date if stated, and what the case was about. ' +

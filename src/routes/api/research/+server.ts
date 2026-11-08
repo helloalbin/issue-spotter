@@ -25,6 +25,7 @@ import { checkUrl, fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import {
 	RELEVANCE_PROMPT,
+	isDocumentUrl,
 	RESEARCH_DOMAINS,
 	RESEARCH_INSTRUCTIONS,
 	buildBrief,
@@ -86,7 +87,7 @@ async function writeReport(
 	signal: AbortSignal,
 	stage: (stage: 'reading' | 'writing') => void
 ): Promise<ResearchBrief> {
-	const picked = pickSources(brief, DEEP_RESEARCH_READ_SOURCES);
+	const picked = pickSources(brief, DEEP_RESEARCH_READ_SOURCES, isDocumentUrl);
 	if (picked.length === 0) return brief;
 	stage('reading');
 
@@ -404,7 +405,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				}
 
 				let finished = brief;
-				const picked = DEEP_RESEARCH_READ_SOURCES > 0 && SOURCE_READING === 'browser' ? pickSources(brief, DEEP_RESEARCH_READ_SOURCES) : [];
+				const picked = DEEP_RESEARCH_READ_SOURCES > 0 && SOURCE_READING === 'browser' ? pickSources(brief, DEEP_RESEARCH_READ_SOURCES, isDocumentUrl) : [];
 				if (picked.length > 0) {
 					// The pages are read in the user's browser: hand it a signed list and wait for it to come back.
 					const leads = brief.blocks

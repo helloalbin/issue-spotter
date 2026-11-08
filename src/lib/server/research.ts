@@ -30,6 +30,21 @@ export const RESEARCH_DOMAINS = [
 	'indiankanoon.org'
 ];
 
+/**
+ * Whether an address is a document rather than a listing. Indian Kanoon's own search and citation
+ * lists ("cites: 123", "citedby: 123") are pages the search tool sometimes cites, but they are lists
+ * of cases, not a case, and must never be read as a judgment.
+ */
+export function isDocumentUrl(raw: string): boolean {
+	try {
+		const url = new URL(raw);
+		if (!/(^|\.)indiankanoon\.org$/.test(url.hostname)) return true;
+		return /^\/doc\/\d+\/?$/.test(url.pathname);
+	} catch {
+		return false;
+	}
+}
+
 /** A copy of a judgment on Indian Kanoon is a real page but not the court's own. */
 export const isOfficialHost = (host: string) => !isAllowedHost(host, ['indiankanoon.org']);
 

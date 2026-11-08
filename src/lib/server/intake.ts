@@ -1,5 +1,5 @@
 import type { GatheredSource, ResearchSource, SourceStamp } from '../spotter.ts';
-import { isOfficialHost } from './research.ts';
+import { isOfficialHost, sourceTitle } from './research.ts';
 import { stampValid } from './token.ts';
 import type { Grant } from './token.ts';
 import { hostOf } from './verify.ts';
@@ -67,7 +67,8 @@ export async function intakeSources(raw: unknown, grant: Grant, key: string): Pr
 			url,
 			host,
 			official: isOfficialHost(host),
-			title: text(entry?.title, 200).replace(/\s+/g, ' ').trim() || host,
+			// A PDF has no title, only its first line, which is usually the whole cause title: use a short name instead.
+			title: entry.kind === 'pdf' ? sourceTitle(text(entry?.title, 200).replace(/\s+/g, ' ').trim(), url, host) : text(entry?.title, 200).replace(/\s+/g, ' ').trim() || host,
 			opening: text(entry?.opening, MAX_OPENING),
 			excerpt,
 			cut: entry?.cut === true,

@@ -22,11 +22,20 @@ export type QuotaInfo = {
 	resetsAt: number;
 };
 
+export type SpotSection = 'issues' | 'doctrines' | 'precedents' | 'acts';
+
+/** One finished entry of a section, sent while the analysis is still being written. */
+export type SpotItem =
+	| { section: 'issues' | 'doctrines' | 'precedents'; value: string }
+	| { section: 'acts'; value: ActReference };
+
 /** Newline-delimited JSON events streamed by POST /api/spot. */
 export type SpotEvent =
 	| { quota: QuotaInfo }
 	| { stage: 'verifying' }
 	| { stage: 'analyzing' }
+	| { item: SpotItem }
+	| { sectionDone: SpotSection }
 	| { result: SpotterResult }
 	| { notLegal: true }
 	| { error: string };

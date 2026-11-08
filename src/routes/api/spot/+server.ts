@@ -8,9 +8,10 @@ import {
 	QUOTA_REJECTION_MULTIPLIER
 } from '$app/env/private';
 import { subjectFor } from '#lib/server/identity.js';
+import { SectionParser } from '#lib/server/section-stream.js';
 import { quotaInfo, rejectionSubject, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
-import type { ActReference, SpotEvent, SpotterResult } from '#lib/spotter.js';
+import type { ActReference, SpotEvent, SpotItem, SpotSection, SpotterResult } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
 const CLASSIFIER_PROMPT =
@@ -124,13 +125,113 @@ async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<ChatRe
 		throw new SpotError('Model returned an empty response.');
 	}
 
-	const usage: Usage = {
+	const usage = readUsage(payload);
+	console.log(JSON.stringify({ event: 'llm_usage', call: options.label, model: OPENAI_MODEL, ...usage }));
+
+	return { content, usage };
+}
+
+function readUsage(payload: any): Usage {
+	return {
 		promptTokens: typeof payload?.usage?.prompt_tokens === 'number' ? payload.usage.prompt_tokens : null,
 		completionTokens:
 			typeof payload?.usage?.completion_tokens === 'number' ? payload.usage.completion_tokens : null
 	};
-	console.log(JSON.stringify({ event: 'llm_usage', call: options.label, model: OPENAI_MODEL, ...usage }));
+}
 
+/**
+ * Like `chat`, but asks the provider to stream and hands each piece of text to `onText` as it
+ * arrives. Aborting `signal` stops the provider generating, so a cancelled search stops costing.
+ * A provider that ignores `stream` and answers in one JSON body still works.
+ */
+async function chatStream(
+	fetchFn: typeof fetch,
+	options: ChatOptions,
+	signal: AbortSignal,
+	onText: (text: string) => void
+): Promise<ChatResult> {
+	let response: Response;
+
+	try {
+		response = await fetchFn(`${OPENAI_BASE_URL}/chat/completions`, {
+			method: 'POST',
+			signal,
+			headers: {
+				Authorization: ['Bearer', OPENAI_API_KEY].join(' '),
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				model: OPENAI_MODEL,
+				temperature: options.temperature,
+				max_tokens: options.maxTokens,
+				stream: true,
+				stream_options: { include_usage: true },
+				...(options.jsonMode && { response_format: { type: 'json_object' } }),
+				messages: [
+					{ role: 'system', content: options.system },
+					{ role: 'user', content: options.user }
+				]
+			})
+		});
+	} catch (error) {
+		if (signal.aborted) throw error;
+		console.error('Model provider request failed:', error, (error as Error)?.cause);
+		throw new SpotError('Unable to reach the model provider.');
+	}
+
+	if (!response.ok) {
+		console.error(`Model provider error (${response.status}):`, await response.text());
+		throw new SpotError(`Analysis request failed (${response.status}).`);
+	}
+
+	let content = '';
+	let usage: Usage = { promptTokens: null, completionTokens: null };
+
+	if (!response.body || !(response.headers.get('content-type') ?? '').includes('text/event-stream')) {
+		const payload = await response.json();
+		const text = payload?.choices?.[0]?.message?.content;
+		if (typeof text !== 'string') throw new SpotError('Model returned an empty response.');
+		content = text;
+		usage = readUsage(payload);
+		onText(text);
+	} else {
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+
+		while (true) {
+			const { done, value } = await reader.read();
+			buffer += decoder.decode(value, { stream: !done });
+			const lines = buffer.split('\n');
+			buffer = done ? '' : (lines.pop() ?? '');
+
+			for (const line of lines) {
+				if (!line.startsWith('data:')) continue;
+				const data = line.slice(5).trim();
+				if (!data || data === '[DONE]') continue;
+
+				let payload: any;
+				try {
+					payload = JSON.parse(data);
+				} catch {
+					continue;
+				}
+
+				const delta = payload?.choices?.[0]?.delta?.content;
+				if (typeof delta === 'string' && delta) {
+					content += delta;
+					onText(delta);
+				}
+				if (payload?.usage) usage = readUsage(payload);
+			}
+
+			if (done) break;
+		}
+
+		if (!content) throw new SpotError('Model returned an empty response.');
+	}
+
+	console.log(JSON.stringify({ event: 'llm_usage', call: options.label, model: OPENAI_MODEL, ...usage }));
 	return { content, usage };
 }
 
@@ -150,15 +251,50 @@ async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise
 	}
 }
 
-async function analyze(fetchFn: typeof fetch, facts: string): Promise<SpotterResult> {
-	const { content } = await chat(fetchFn, {
-		label: 'analysis',
-		system: SYSTEM_PROMPT,
-		user: facts,
-		maxTokens: ANALYSIS_MAX_TOKENS,
-		temperature: 0.2,
-		jsonMode: true
-	});
+const MAX_ITEMS: Record<SpotSection, number> = { issues: 8, doctrines: 8, precedents: 8, acts: 6 };
+
+/**
+ * Streams the analysis: `emit` gets each item and each finished section while the model is still
+ * writing, and the returned result is the whole reply, parsed and normalized once it ends.
+ */
+async function analyze(
+	fetchFn: typeof fetch,
+	facts: string,
+	signal: AbortSignal,
+	emit: (event: SpotEvent) => void
+): Promise<SpotterResult> {
+	const parser = new SectionParser();
+	const counts: Record<SpotSection, number> = { issues: 0, doctrines: 0, precedents: 0, acts: 0 };
+
+	const { content } = await chatStream(
+		fetchFn,
+		{
+			label: 'analysis',
+			system: SYSTEM_PROMPT,
+			user: facts,
+			maxTokens: ANALYSIS_MAX_TOKENS,
+			temperature: 0.2,
+			jsonMode: true
+		},
+		signal,
+		(text) => {
+			for (const piece of parser.push(text)) {
+				if ('done' in piece) {
+					emit({ sectionDone: piece.done });
+					continue;
+				}
+
+				const { section, value } = piece.item;
+				if (counts[section] >= MAX_ITEMS[section]) continue;
+
+				const entry = section === 'acts' ? normalizeActs([value])[0] : normalizeList([value])[0];
+				if (!entry) continue;
+
+				counts[section] += 1;
+				emit({ item: { section, value: entry } as SpotItem });
+			}
+		}
+	);
 
 	let parsed: Partial<SpotterResult>;
 
@@ -241,10 +377,15 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 		}
 	};
 
+	// Aborting this stops the provider mid-reply, so a search the user cancels stops costing tokens.
+	const upstream = new AbortController();
+	let cancelled = false;
+
 	const stream = new ReadableStream({
 		async start(controller) {
-			const send = (event: SpotEvent) =>
-				controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
+			const send = (event: SpotEvent) => {
+				if (!cancelled) controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
+			};
 
 			try {
 				send({ quota: quotaInfo(subject, remaining) });
@@ -266,16 +407,23 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				}
 
 				send({ stage: 'analyzing' });
-				send({ result: await analyze(fetch, trimmed) });
+				send({ result: await analyze(fetch, trimmed, upstream.signal, send) });
 			} catch (error) {
+				// A cancelled search keeps its count: the provider already did part of the work.
+				if (cancelled) return;
 				await refund();
 				send({ quota: quotaInfo(subject, remaining) });
 				send({
 					error: error instanceof SpotError ? error.message : 'Unexpected error while analyzing.'
 				});
 			} finally {
-				controller.close();
+				if (!cancelled) controller.close();
 			}
+		},
+		cancel() {
+			cancelled = true;
+			upstream.abort();
+			console.log(JSON.stringify({ event: 'search_cancelled' }));
 		}
 	});
 

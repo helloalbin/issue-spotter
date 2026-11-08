@@ -33,7 +33,16 @@ export type SpotterResult = {
 	counterArguments?: CounterArgument[];
 	/** On an update: facts still unknown that would change the analysis if established. */
 	openQuestions?: string[];
+	/** When the Draft skill was on: the kind of document ("FIR", "Criminal complaint"), its title and body. */
+	documentType?: string;
+	documentTitle?: string;
+	draft?: DraftBlock[];
+	/** Things to check before using the draft. */
+	draftNotes?: string[];
 };
+
+/** One part of a draft document: a heading and its paragraphs. Unknown facts are [BRACKETED]. */
+export type DraftBlock = { heading: string; text: string };
 
 /**
  * The earlier analysis of the same case, sent with a follow-up so the model can say what changed and
@@ -57,6 +66,8 @@ export function previousOf(result: SpotterResult): PreviousAnalysis {
 
 /** Entries found so far while an analysis is still being written, by section. */
 export type Streamed = {
+	draft: DraftBlock[];
+	draftNotes: string[];
 	update: string[];
 	openQuestions: string[];
 	summary: string[];
@@ -90,17 +101,32 @@ export type SourceMatch = { key: string; url: string; title: string; host: strin
 /** What produced the analysis, for the verification pane. */
 export type AnalysisMeta = { model: string; ms: number };
 
+/** What the app understood from an uploaded file, shown to the user right after it is read. */
+export type Reading = {
+	/** The kind of document, in a few words: "notice", "judgment", "FIR copy". */
+	documentKind: string;
+	/** What it says, as 3 to 5 plain-language points. */
+	summary: string[];
+};
+
 /**
- * A page the user attached as background, fetched by our server from an allowed legal site. Its text
- * is sent with each analysis of the case.
+ * Background the user attached to a case: a page fetched by our server from an allowed legal site,
+ * or a file they uploaded. Its text is sent with each analysis of the case.
  */
 export type Attachment = {
-	url: string;
+	/** The address for a page, a unique id for a file. */
+	id: string;
+	kind: 'page' | 'file';
 	title: string;
-	host: string;
 	text: string;
-	/** True when the page was longer than the limit and only its start is used. */
+	/** True when the source was longer than the limit and only its start is used. */
 	truncated: boolean;
+	/** Pages only. */
+	url?: string;
+	host?: string;
+	/** Files only. */
+	fileName?: string;
+	reading?: Reading;
 };
 
 export const MAX_ATTACHMENTS = 5;
@@ -117,6 +143,8 @@ export type QuotaInfo = {
 };
 
 export type SpotSection =
+	| 'draft'
+	| 'draftNotes'
 	| 'update'
 	| 'openQuestions'
 	| 'summary'
@@ -128,7 +156,11 @@ export type SpotSection =
 
 /** One finished entry of a section, sent while the analysis is still being written. */
 export type SpotItem =
-	| { section: 'update' | 'openQuestions' | 'summary' | 'issues' | 'doctrines'; value: string }
+	| {
+			section: 'update' | 'openQuestions' | 'summary' | 'issues' | 'doctrines' | 'draftNotes';
+			value: string;
+	  }
+	| { section: 'draft'; value: DraftBlock }
 	| { section: 'precedents'; value: Precedent }
 	| { section: 'acts'; value: ActReference }
 	| { section: 'counterArguments'; value: CounterArgument };

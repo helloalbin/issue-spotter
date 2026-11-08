@@ -5,7 +5,7 @@ import { analysisTokens, buildSystemPrompt, buildUserText, parseContext, parsePr
 const page = (over = {}) => ({ url: 'https://indiankanoon.org/doc/1/', title: 'M C Mehta vs Union Of India', text: 'The court held that ...', ...over });
 
 test('keeps only known skills, once each', () => {
-	assert.deepEqual(parseSkills(['summarize', 'summarize', 'counter-arguments', 'draft', 7, null]), ['summarize', 'counter-arguments']);
+	assert.deepEqual(parseSkills(['summarize', 'summarize', 'counter-arguments', 'deep-research', 7, null]), ['summarize', 'counter-arguments']);
 	assert.deepEqual(parseSkills('summarize'), []);
 	assert.deepEqual(parseSkills(undefined), []);
 });
@@ -98,4 +98,42 @@ test('the earlier analysis is cut down to bounded short strings, and ignored whe
 	assert.equal(big.issues[0].length, 300);
 	assert.deepEqual(big.doctrines, ['ok']);
 	assert.deepEqual(big.precedents, []);
+});
+
+test('Draft is exclusive: asked for with others, it is the only skill', () => {
+	assert.deepEqual(parseSkills(['summarize', 'draft', 'counter-arguments']), ['draft']);
+	assert.deepEqual(parseSkills(['draft']), ['draft']);
+});
+
+test('the draft prompt asks for a document, not an analysis', () => {
+	const prompt = buildSystemPrompt(['draft'], false);
+	assert.match(prompt, /keys, in this order: jurisdiction, documentType, documentTitle, draft, openQuestions, draftNotes\./);
+	assert.match(prompt, /Never invent facts, names, dates/);
+	assert.match(prompt, /square brackets/);
+	assert.match(prompt, /1 July 2024/, 'it tells the model which criminal codes apply when');
+	assert.match(prompt, /an advocate must review it/);
+	assert.doesNotMatch(prompt, /issues, doctrines, precedents/);
+	assert.match(buildSystemPrompt(['draft'], true), /cannot be trusted/);
+	assert.equal(analysisTokens(2000, ['draft']), 3500);
+});
+
+test('an uploaded file is accepted as text, labelled as a file and never given a host', () => {
+	const parsed = parseContext([{ kind: 'file', fileName: 'notice.pdf', title: 'Legal notice', text: 'To the tenant ...', truncated: true }]);
+	assert.ok(parsed.ok);
+	const file = parsed.ok ? parsed.context[0] : null;
+	assert.equal(file?.kind, 'file');
+	assert.equal(file?.id, 'file:notice.pdf');
+	assert.equal(file?.host, undefined);
+	assert.equal(file?.truncated, true);
+	const text = buildUserText('summarize this', parsed.ok ? parsed.context : []);
+	assert.match(text, /--- Attached file 1: Legal notice \(notice\.pdf\) ---\nTo the tenant/);
+	assert.match(text, /--- End of attached file 1 ---$/);
+});
+
+test('files and pages can be mixed, and a file still needs a name and text', () => {
+	const mixed = parseContext([page(), { kind: 'file', fileName: 'a.docx', title: 'A', text: 'x' }]);
+	assert.ok(mixed.ok && mixed.context.map((c) => c.kind).join() === 'page,file');
+	assert.equal(parseContext([{ kind: 'file', fileName: '', title: 'A', text: 'x' }]).ok, false);
+	assert.equal(parseContext([{ kind: 'file', fileName: 'a.docx', title: 'A', text: '' }]).ok, false);
+	assert.equal(parseContext([{ kind: 'file', fileName: 'a.docx', title: 'A', text: 'x'.repeat(12001) }]).ok, false);
 });

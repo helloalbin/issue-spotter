@@ -6,6 +6,7 @@ import { PageError, checkUrl, fetchPage } from '#lib/server/page.js';
 import { release, reserve } from '#lib/server/quota.js';
 import { SOURCE_DOMAINS } from '#lib/server/verify.js';
 import { MAX_ATTACHMENT_CHARS } from '#lib/spotter.js';
+import type { Attachment } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -65,7 +66,9 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 			signal: deadline.signal,
 			allowLocal
 		});
-		return Response.json({ attachment });
+		return Response.json({
+			attachment: { id: attachment.url, kind: 'page', ...attachment } satisfies Attachment
+		});
 	} catch (error) {
 		// Only pages that were really added count against the day.
 		await release(db, subject, reservation.day).catch(() => {});

@@ -2,6 +2,8 @@ import type { SpotSection } from '#lib/spotter.js';
 
 export type Section = SpotSection;
 const SECTIONS: readonly string[] = [
+	'draft',
+	'draftNotes',
 	'update',
 	'summary',
 	'issues',

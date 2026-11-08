@@ -84,3 +84,29 @@ test('does not throw on empty or malformed input', () => {
 	assert.deepEqual(run(['']), []);
 	assert.doesNotThrow(() => run(['not json at all ]]] }}} "', '{"issues": [ {"x": ']));
 });
+
+test('streams the parts of a draft, with newlines, brackets and quotes inside their text', () => {
+	const reply = JSON.stringify(
+		{
+			jurisdiction: 'India',
+			documentType: 'Police complaint',
+			draft: [
+				{ heading: 'To', text: 'The Station House Officer,\n[Name of Police Station]' },
+				{ heading: 'Facts', text: '1. I, [Name], state that "two men" assaulted me.\n2. They took {my phone}.' }
+			],
+			openQuestions: ['Name and address of the complainant'],
+			draftNotes: ['An advocate must review this.', 'Verify [Section 115 BNS, 2023].']
+		},
+		null,
+		2
+	);
+	const want = ['draft:To', 'draft:Facts', 'done:draft', 'openQuestions:Name and address of the complainant', 'done:openQuestions', 'draftNotes:An advocate must review this.', 'draftNotes:Verify [Section 115 BNS, 2023].', 'done:draftNotes'];
+	const name = (piece: Piece) => {
+		if ('done' in piece) return `done:${piece.done}`;
+		const { section, value } = piece.item;
+		return `${section}:${typeof value === 'string' ? value : (value as { heading: string }).heading}`;
+	};
+	assert.deepEqual(run([reply]).map(name), want);
+	assert.deepEqual(run(reply).map(name), want, 'one character at a time');
+	for (let i = 1; i < reply.length; i += 7) assert.deepEqual(run([reply.slice(0, i), reply.slice(i)]).map(name), want, `split at ${i}`);
+});

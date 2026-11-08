@@ -25,10 +25,12 @@ import { SectionParser } from '#lib/server/section-stream.js';
 import { verifySources } from '#lib/server/sources.js';
 import { quotaInfo, rejectionSubject, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
+import { MIN_FOLLOW_UP } from '#lib/case.js';
 import type { ActiveSkill } from '#lib/skills.js';
 import type {
 	ActReference,
 	CounterArgument,
+	DraftBlock,
 	Precedent,
 	SpotEvent,
 	SpotItem,
@@ -84,6 +86,21 @@ function normalizeCounterArguments(value: unknown): CounterArgument[] {
 		if (items.length >= 6) break;
 	}
 	return items;
+}
+
+function normalizeDraft(value: unknown): DraftBlock[] {
+	if (!Array.isArray(value)) return [];
+	const blocks: DraftBlock[] = [];
+	for (const item of value) {
+		if (item && typeof item === 'object') {
+			const record = item as Record<string, unknown>;
+			const heading = typeof record.heading === 'string' ? record.heading.trim().slice(0, 200) : '';
+			const text = typeof record.text === 'string' ? record.text.trim().slice(0, 6000) : '';
+			if (text) blocks.push({ heading, text });
+		}
+		if (blocks.length >= 12) break;
+	}
+	return blocks;
 }
 
 function normalizeHeadline(value: unknown): string | undefined {
@@ -380,6 +397,8 @@ async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise
 }
 
 const MAX_ITEMS: Record<SpotSection, number> = {
+	draft: 12,
+	draftNotes: 5,
 	update: 3,
 	openQuestions: 4,
 	summary: 5,
@@ -402,6 +421,8 @@ async function analyze(
 ): Promise<SpotterResult> {
 	const parser = new SectionParser();
 	const counts: Record<SpotSection, number> = {
+		draft: 0,
+		draftNotes: 0,
 		update: 0,
 		openQuestions: 0,
 		summary: 0,
@@ -431,12 +452,16 @@ async function analyze(
 				}
 
 				const { section, value } = piece.item;
-				if (counts[section] >= MAX_ITEMS[section]) continue;
+				// A draft lists up to six details still to fill in; an update lists four.
+				const cap = section === 'openQuestions' && request.skills.includes('draft') ? 6 : MAX_ITEMS[section];
+				if (counts[section] >= cap) continue;
 
 				const entry =
 					section === 'acts'
 						? normalizeActs([value])[0]
-						: section === 'precedents'
+						: section === 'draft'
+							? normalizeDraft([value])[0]
+							: section === 'precedents'
 							? normalizePrecedents([value])[0]
 							: section === 'counterArguments'
 								? normalizeCounterArguments([value])[0]
@@ -455,6 +480,21 @@ async function analyze(
 		parsed = JSON.parse(content);
 	} catch {
 		throw new SpotError('Model response was not valid JSON.');
+	}
+
+	if (request.skills.includes('draft')) {
+		return {
+			jurisdiction: normalizeJurisdiction(parsed.jurisdiction),
+			documentType: normalizeHeadline(parsed.documentType)?.slice(0, 60),
+			documentTitle: normalizeHeadline(parsed.documentTitle),
+			draft: normalizeDraft(parsed.draft),
+			openQuestions: normalizeList(parsed.openQuestions).slice(0, 6),
+			draftNotes: normalizeList(parsed.draftNotes).slice(0, 5),
+			issues: [],
+			doctrines: [],
+			precedents: [],
+			acts: []
+		};
 	}
 
 	return {
@@ -498,12 +538,6 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 		return Response.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
 	}
 
-	if (facts.trim().length < MIN_FACTS) {
-		return Response.json(
-			{ error: `Please provide at least ${MIN_FACTS} characters of factual summary.` },
-			{ status: 400 }
-		);
-	}
 	if (facts.length > MAX_FACTS) {
 		return Response.json(
 			{ error: `Please keep the factual summary under ${MAX_FACTS.toLocaleString()} characters.` },
@@ -513,6 +547,14 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	const parsedContext = parseContext(rawContext, { allowLocal: import.meta.env.DEV });
 	if (!parsedContext.ok) {
 		return Response.json({ error: parsedContext.error }, { status: 400 });
+	}
+	// With something attached, a few words such as "spot the issues" are enough to say what to do.
+	const minimum = parsedContext.context.length > 0 ? MIN_FOLLOW_UP : MIN_FACTS;
+	if (facts.trim().length < minimum) {
+		return Response.json(
+			{ error: `Please provide at least ${minimum} characters of factual summary.` },
+			{ status: 400 }
+		);
 	}
 	if (!OPENAI_API_KEY) {
 		return Response.json({ error: 'Server is missing OPENAI_API_KEY configuration.' }, { status: 500 });
@@ -602,7 +644,8 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				// Indian law (the sites searched are Indian) and only when switched on for this user.
 				const signedIn = subject.ns !== 'search';
 				const indian = !result.jurisdiction || /\bindia/i.test(result.jurisdiction);
-				if (indian && (SOURCE_VERIFICATION === 'all' || (SOURCE_VERIFICATION === 'signed-in' && signedIn))) {
+				// A draft cites no cases to look up, so it is not verified.
+				if (indian && !skills.includes('draft') && (SOURCE_VERIFICATION === 'all' || (SOURCE_VERIFICATION === 'signed-in' && signedIn))) {
 					send({ stage: 'sourcing' });
 					send({ sources: await verifySources(fetch, result, upstream.signal) });
 				}

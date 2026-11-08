@@ -48,6 +48,9 @@
 		workspace.verifyMode ? 'badgeCheck' : workspace.compareMode ? 'gitCompare' : workspace.researchMode ? 'telescope' : fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
 	) as 'arrowUp' | 'squarePen' | 'sparkles' | 'telescope' | 'gitCompare' | 'badgeCheck';
 
+	/** Clear empties what is typed and any message above it, so it has nothing to do without them. */
+	let canClear = $derived(workspace.facts.trim() !== '' || workspace.errorMessage !== '' || workspace.notice !== '');
+
 	/** A file was sent on its own and the app is waiting to hear what to do with it. */
 	let awaitingFile = $derived(workspace.thread.some((exchange) => exchange.kind === 'reading'));
 
@@ -328,7 +331,9 @@
 			</div>
 
 			<div class="flex items-center gap-2">
-				<Button variant="ghost" class="px-3 py-[9px]" onclick={() => workspace.clearDraft()}>Clear</Button>
+				<Button variant="ghost" class="px-3 py-[9px]" onclick={() => workspace.clearDraft()} disabled={!canClear}>
+					Clear
+				</Button>
 				<Button
 					variant="primary"
 					type="submit"

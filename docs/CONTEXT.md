@@ -32,7 +32,7 @@ Jurisdiction: the system prompt tells the model to infer the jurisdiction from t
 - **SvelteKit 3** (`@sveltejs/kit ^3`), **Svelte 5** with runes forced on for all non-`node_modules` files (see `vite.config.ts`).
 - **Firebase Auth** (Google sign-in) in the browser via the `firebase` SDK (pinned to 12.x, since 13.x needs Node 24.12+), and `jose` on the server to verify ID tokens.
 - **Cloudflare Workers** via `@sveltejs/adapter-cloudflare`, configured in `wrangler.jsonc`. **D1** (SQLite) holds quota counters.
-- **Tailwind CSS 4** via `@tailwindcss/vite`. The only stylesheet is `src/routes/layout.css`, which holds the design tokens (see [`UI_CONTEXT.md`](UI_CONTEXT.md)). Inter and JetBrains Mono are self-hosted through `@fontsource-variable`.
+- **Tailwind CSS 4** via `@tailwindcss/vite`. The only stylesheet is `src/routes/layout.css`, which holds the design tokens (see [`UI_CONTEXT.md`](UI_CONTEXT.md)). Inter and JetBrains Mono are self-hosted through `@fontsource-variable`. Icons come from `@lucide/svelte`.
 - **TypeScript 6**, `strict: true`. **Vite 8**.
 - An OpenAI-compatible Chat Completions API is the model provider.
 - No test runner, linter or formatter is configured.
@@ -58,11 +58,15 @@ There is no user table and nothing user-written is persisted. The only stored da
 
 | Path | Role |
 | --- | --- |
-| `src/routes/+page.svelte` | The app page: state, auth wiring, the streaming request, and the layout (sidebar, composer, progress, results). |
-| `src/routes/privacy`, `src/routes/terms` | Privacy policy and terms of use, built on `LegalDocument.svelte`. |
+| `src/routes/+layout.svelte` | The app shell: sidebar, top bar, theme toggle, sign-in dialog. Initialises auth and refreshes the quota when who is acting changes. |
+| `src/routes/+page.svelte` | The analysis page: empty state, progress, results, messages and the docked composer. |
+| `src/lib/workspace.svelte.ts` | Analysis state (facts, result, stage, quota) and the streaming `submit()`. Lives outside the page so it survives navigation. |
+| `src/lib/auth.svelte.ts` | Firebase sign-in state and actions (`init`, `signIn`, `signOut`, `headers`, `openDialog`). Browser-only. |
+| `src/routes/privacy`, `terms`, `samples`, `learn/*` | Privacy and terms, the sample cases, and the Learn pages (how it works, issue-spotting guide, glossary), all on `ContentPage.svelte`. |
 | `src/routes/design-system` | Development-only token and primitive reference. Returns 404 in production. |
 | `src/routes/layout.css` | The design tokens, type scale and text styles. The only file allowed to contain raw colors. |
-| `src/lib/components/` | `Sidebar`, `SignInDialog`, `Progress`, `AnalysisResult`, `LegalDocument`, `Button`, `Chip`, `Icon`, `ThemeToggle`, `GoogleMark`. |
+| `src/lib/components/` | `Sidebar`, `Composer`, `AddContext`, `SignInDialog`, `Progress`, `AnalysisResult`, `ContentPage`, `Logo`, `Button`, `Chip`, `Icon`, `ThemeToggle`, `GoogleMark`. |
+| `src/lib/icons.ts` | The Lucide icons the UI uses, by name. Add an entry to use a new one. |
 | `src/lib/site.ts`, `samples.ts`, `markdown.ts` | Brand name and contact address, sample fact patterns, the Copy as Markdown export. |
 | `scripts/check-tokens.mjs` | `npm run check:tokens`: fails on any raw color in `src/` outside `layout.css`. |
 | `static/favicon/` | Generated icon set and web manifest, linked from `src/app.html`. |

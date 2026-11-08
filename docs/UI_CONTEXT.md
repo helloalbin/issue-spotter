@@ -31,19 +31,22 @@ One unavoidable exception: `static/favicon/site.webmanifest` holds `theme_color`
 
 ## Layout
 
+The shell lives in `src/routes/+layout.svelte`, so the sidebar, top bar and sign-in dialog stay put while pages change. Analysis state lives in `src/lib/workspace.svelte.ts` and auth state in `src/lib/auth.svelte.ts`, outside any page, so opening a Learn page and coming back keeps the facts, the result and the quota counter.
+
 ```
 div.flex.h-dvh
 ├─ Sidebar            272px; off-canvas drawer below md
-│   ├─ brand, New analysis, ABOUT (Privacy, Terms, Contact)
-│   └─ Learning aid note, Sign in / account chip with sign-out
+│   ├─ brand (logo mark, wordmark), New analysis, Sample cases
+│   ├─ LEARN: How it works, Issue-spotting guide, Glossary
+│   ├─ ABOUT: Privacy, Terms, Contact
+│   └─ Learning aid note, Sign In for Free / account chip with sign-out
 └─ column
     ├─ top bar        menu button (below md), theme toggle
-    ├─ main#main      one of: empty state, progress, results
-    └─ docked composer  (only while loading or showing results)
-SignInDialog          native <dialog>, opened from the sidebar or the out-of-searches notice
+    └─ page           each page renders its own <main id="main">
+SignInDialog          native <dialog>, opened through auth.openDialog()
 ```
 
-A skip link jumps to `#main`. Pages at `/privacy` and `/terms` use `LegalDocument` (a header with the brand and theme toggle, a readable column, a footer with links).
+Pages: `/` (the analysis), `/samples`, `/learn/how-it-works`, `/learn/guide`, `/learn/glossary`, `/privacy`, `/terms`. The last six use `ContentPage`. The active sidebar item is marked with `aria-current="page"`. "New analysis" clears the workspace and goes to `/`; the logo only navigates, so it never discards a result. A skip link jumps to `#main`.
 
 ## States
 
@@ -55,11 +58,15 @@ A skip link jumps to `#main`. Pages at `/privacy` and `/terms` use `LegalDocumen
 
 ## Composer
 
-A `textarea` (label `sr-only`, `name="facts"`) inside a card that gains a stronger border on focus. The footer row shows the character counter (`n / 12,000`, red over the limit), the remaining searches ("N of M free searches left today", "free" only for anonymous visitors), Clear and Spot issues. The context tip (40 or more characters with no legal vocabulary) appears under the card and never blocks. Validation: at least 20 trimmed characters, at most 12,000.
+`Composer.svelte`, from the design's input card: a `bg-surface-2`, `rounded-2xl` card with a `textarea` (label `sr-only`, `name="facts"`) and a footer row. On the left are the **Add** button (opens the Add context drawer) and the character counter (`n / 12,000`, red over the limit, "Context locked" while loading). On the right are Clear and Spot issues (with the sparkles icon and `shadow-button`). The remaining searches ("N of M free searches left today", "free" only for anonymous visitors) sit under the card. The context tip (40 or more characters with no legal vocabulary) appears there too and never blocks. Validation: at least 20 trimmed characters, at most 12,000. Below the card in the empty state are the sample chips: "Use sample facts" (loads the next sample in turn), then one chip per sample.
+
+### Add context drawer
+
+`AddContext.svelte` is the design's drawer: Upload files, Add a URL, a Skills grid (Draft, Deep research, Compare cases, Counter-args, Verify cites, Summarize) and an "Or paste a link" field. It opens above the Add button, closes on Escape (focus returns to the button) or a click outside, and sizes itself to the space above the button, scrolling inside if needed. **Every control in it is disabled and labelled "Soon" or "Coming soon"**, because uploads, link fetching and skills have no backend yet. The first two need file parsing and safe server-side fetching; the skills overlap with the Investigative and Research tiers in the roadmap. Wire them one at a time and remove the disabled state as each lands.
 
 ## Sign-in
 
-The sidebar shows "Sign in" only when all four `FIREBASE_*` values are set. It opens the dialog, which offers Continue with Google and links to Terms and Privacy. The dialog closes when sign-in succeeds. Closing the popup is not an error. A signed-in user sees an avatar initial, the name and email, and a sign-out button. Requests carry `Authorization: Bearer <ID token>` when signed in.
+The sidebar shows "Sign In for Free" only when all four `FIREBASE_*` values are set. It opens the dialog, which offers Continue with Google and links to Terms and Privacy. The dialog closes when sign-in succeeds. Closing the popup is not an error. A signed-in user sees an avatar initial, the name and email, and a sign-out button. Requests carry `Authorization: Bearer <ID token>` when signed in.
 
 ## Accessibility
 
@@ -69,15 +76,13 @@ Gaps: the quota counter changes are not announced; results do not take focus or 
 
 ## In the design but not built
 
-These appear in `spotter.pen` and are deliberately absent because nothing behind them exists. Showing them would mislead users.
-
-- **Upload files, Add a URL, Skills** (Draft, Deep research, Compare cases, Counter-args, Verify cites, Summarize). The tiers in the roadmap may take over the "Deep research" idea.
+- **Upload files, Add a URL and Skills** are drawn and disabled (see the drawer above). The "2 selected" skills state is not shown, since none can be selected.
 - **Verification panel** (search path, linked sources) and the "Jurisdiction" and "Sources linked" chips. Precedents and sections are model output with no verification, so a "linked" claim would be false.
 - **External links** on precedents and sections, and the year beside each case. The model returns plain strings.
-- **History, saved analyses, sync across devices**, and the "Ask a follow-up" input.
+- **History, saved analyses, sync across devices**, and the "Ask a follow-up" input. The docked composer starts a new analysis.
 - **Feedback actions** (thumbs, read aloud, more) and a **Stop** button. Stopping would not stop the provider cost or refund the search.
-- **Sample cases, How it works, Issue-spotting guide, Glossary** pages. The sidebar lists only pages that exist.
-- The design calls the product "Issue Spotter". The app uses "Legal Spotter" (the domain and Firebase name), set in `src/lib/site.ts`.
+
+Extras not in the design: the ABOUT group (Privacy, Terms, Contact) in the sidebar, since the legal pages need a home.
 
 ## Conventions for new work
 

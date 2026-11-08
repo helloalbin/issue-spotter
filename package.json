@@ -14,9 +14,11 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"preview:worker": "vite build && wrangler dev"
+		"preview:worker": "vite build && wrangler dev",
+		"db:migrate:local": "wrangler d1 migrations apply DB --local"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^5.20261108.1",
 		"@sveltejs/adapter-cloudflare": "^8.0.2",
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",

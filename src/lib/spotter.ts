@@ -14,8 +14,16 @@ export type SpotterResult = {
 	acts: ActReference[];
 };
 
+export type QuotaInfo = {
+	limit: number;
+	remaining: number;
+	/** Epoch milliseconds when the daily quota resets. */
+	resetsAt: number;
+};
+
 /** Newline-delimited JSON events streamed by POST /api/spot. */
 export type SpotEvent =
+	| { quota: QuotaInfo }
 	| { stage: 'verifying' }
 	| { stage: 'analyzing' }
 	| { result: SpotterResult }

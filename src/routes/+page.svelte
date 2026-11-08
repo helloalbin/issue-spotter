@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
-	import type { SpotEvent, SpotterResult } from '#lib/spotter.js';
+	import type { QuotaInfo, SpotEvent, SpotterResult } from '#lib/spotter.js';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
 
 	const SAMPLE_FACTS =
 		'A tenant slipped on a wet staircase in a rented apartment building after repeated written complaints to the landlord about the leak. The tenant suffered a fractured ankle and missed two months of work.';
@@ -9,11 +13,23 @@
 	let isLoading = $state(false);
 	let errorMessage = $state('');
 	let notice = $state('');
+	// Live updates from the stream win over the value loaded with the page.
+	let liveQuota = $state<QuotaInfo | null>(null);
+	let quota = $derived(liveQuota ?? data.quota);
+	let mounted = $state(false);
+	onMount(() => (mounted = true));
 	let stage = $state<'verifying' | 'analyzing' | null>(null);
 	let result = $state<SpotterResult | null>(null);
 
 	let charCount = $derived(facts.length);
 	let overLimit = $derived(facts.length > MAX_FACTS);
+	let outOfSearches = $derived(quota !== null && quota.remaining === 0);
+	// Local reset time is only known in the browser, so wait for mount to avoid a hydration mismatch.
+	let resetTime = $derived(
+		quota && mounted
+			? new Date(quota.resetsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+			: 'later today'
+	);
 	let showContextTip = $derived(facts.trim().length >= 40 && !looksLegal(facts));
 	let statusText = $derived(
 		stage === 'verifying'
@@ -42,7 +58,9 @@
 	}
 
 	function handleEvent(event: SpotEvent) {
-		if ('stage' in event) {
+		if ('quota' in event) {
+			liveQuota = event.quota;
+		} else if ('stage' in event) {
 			stage = event.stage;
 		} else if ('result' in event) {
 			result = {
@@ -86,7 +104,11 @@
 
 			if (!response.ok || !response.body) {
 				const payload = await response.json().catch(() => null);
-				errorMessage = payload?.error ?? 'Unable to analyze the case summary right now.';
+				if (payload?.code === 'quota_exceeded') {
+					liveQuota = payload.quota;
+				} else {
+					errorMessage = payload?.error ?? 'Unable to analyze the case summary right now.';
+				}
 				return;
 			}
 
@@ -104,7 +126,7 @@
 				for (const line of lines) {
 					if (!line.trim()) continue;
 					const parsed: SpotEvent = JSON.parse(line);
-					if (!('stage' in parsed)) finished = true;
+					if (!('stage' in parsed) && !('quota' in parsed)) finished = true;
 					handleEvent(parsed);
 				}
 
@@ -173,7 +195,7 @@
 				<div class="flex flex-wrap items-center gap-2">
 					<button
 						type="submit"
-						disabled={isLoading || overLimit}
+						disabled={isLoading || overLimit || outOfSearches}
 						class="rounded-lg bg-stone-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
 					>
 						{isLoading ? 'Analyzing…' : 'Spot issues'}
@@ -192,6 +214,11 @@
 					>
 						Clear
 					</button>
+					{#if quota}
+						<span class="ml-auto text-xs tabular-nums text-stone-500">
+							{quota.remaining} of {quota.limit} free searches left today
+						</span>
+					{/if}
 				</div>
 			</form>
 
@@ -201,6 +228,13 @@
 					class="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800"
 				>
 					{errorMessage}
+				</p>
+			{/if}
+
+			{#if outOfSearches}
+				<p class="mt-4 rounded-lg border border-stone-300 bg-stone-100 p-3 text-sm text-stone-700">
+					You have used today's {quota?.limit} free searches. They reset at {resetTime}. Your text is
+					kept, and more access is coming soon.
 				</p>
 			{/if}
 

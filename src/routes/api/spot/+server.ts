@@ -1,8 +1,18 @@
-import { OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL } from '$app/env/private';
+import { env } from 'cloudflare:workers';
+import {
+	ANON_DAILY_LIMIT,
+	ANON_IP_DAILY_LIMIT,
+	OPENAI_API_KEY,
+	OPENAI_BASE_URL,
+	OPENAI_MODEL
+} from '$app/env/private';
+import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 import type { ActReference, SpotEvent, SpotterResult } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
+// Rejected (non-legal) input is free, but only this many times the daily limit.
+const REJECTION_MULTIPLIER = 3;
 const CLASSIFIER_MAX_TOKENS = 8;
 const ANALYSIS_MAX_TOKENS = 2000;
 
@@ -169,7 +179,7 @@ async function analyze(fetchFn: typeof fetch, facts: string): Promise<SpotterRes
 	};
 }
 
-export const POST: RequestHandler = async ({ request, fetch }) => {
+export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	let facts = '';
 
 	try {
@@ -195,8 +205,37 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 		return Response.json({ error: 'Server is missing OPENAI_API_KEY configuration.' }, { status: 500 });
 	}
 
+	const db = env.DB;
+	if (!db) {
+		return Response.json({ error: 'Quota store is unavailable.' }, { status: 503 });
+	}
+
+	const limits = { anon: ANON_DAILY_LIMIT, ip: ANON_IP_DAILY_LIMIT };
+	const reservation = await reserve(db, 'search', locals.visitor, limits);
+	if (!reservation.ok) {
+		return Response.json(
+			{
+				error: `You have used today's ${ANON_DAILY_LIMIT} free searches.`,
+				code: 'quota_exceeded',
+				quota: quotaInfo(ANON_DAILY_LIMIT, 0)
+			},
+			{ status: 429 }
+		);
+	}
+
 	const trimmed = facts.trim();
 	const encoder = new TextEncoder();
+	let remaining = reservation.remaining;
+
+	/** Gives the search back, e.g. after a provider error. Never throws. */
+	const refund = async () => {
+		try {
+			await release(db, 'search', locals.visitor, reservation.day);
+			remaining += 1;
+		} catch (error) {
+			console.error('Quota refund failed:', error);
+		}
+	};
 
 	const stream = new ReadableStream({
 		async start(controller) {
@@ -204,11 +243,20 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 				controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
 
 			try {
+				send({ quota: quotaInfo(ANON_DAILY_LIMIT, remaining) });
+
 				// Clear legal vocabulary skips the classifier call; anything unsure is checked.
 				if (!looksLegal(trimmed)) {
 					send({ stage: 'verifying' });
 					if (!(await isLegalFactPattern(fetch, trimmed))) {
+						// A rejection is free, up to a cap, so it can't be spammed.
+						const rejections = await reserve(db, 'reject', locals.visitor, {
+							anon: ANON_DAILY_LIMIT * REJECTION_MULTIPLIER,
+							ip: ANON_IP_DAILY_LIMIT * REJECTION_MULTIPLIER
+						});
+						if (rejections.ok) await refund();
 						send({ notLegal: true });
+						send({ quota: quotaInfo(ANON_DAILY_LIMIT, remaining) });
 						return;
 					}
 				}
@@ -216,6 +264,8 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 				send({ stage: 'analyzing' });
 				send({ result: await analyze(fetch, trimmed) });
 			} catch (error) {
+				await refund();
+				send({ quota: quotaInfo(ANON_DAILY_LIMIT, remaining) });
 				send({
 					error: error instanceof SpotError ? error.message : 'Unexpected error while analyzing.'
 				});

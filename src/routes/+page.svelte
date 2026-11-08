@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MAX_FACTS, MIN_FACTS } from '#lib/spotter.js';
+	import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 	import type { SpotEvent, SpotterResult } from '#lib/spotter.js';
 
 	const SAMPLE_FACTS =
@@ -14,6 +14,7 @@
 
 	let charCount = $derived(facts.length);
 	let overLimit = $derived(facts.length > MAX_FACTS);
+	let showContextTip = $derived(facts.trim().length >= 40 && !looksLegal(facts));
 	let statusText = $derived(
 		stage === 'verifying'
 			? 'Checking that this is a legal fact pattern…'
@@ -162,6 +163,12 @@
 					class="w-full rounded-lg border border-stone-300 bg-white p-3 text-sm leading-6 outline-none transition placeholder:text-stone-400 focus:border-stone-500 focus:ring-2 focus:ring-stone-900/10"
 					placeholder="Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord..."
 				></textarea>
+				{#if showContextTip}
+					<p class="text-xs leading-5 text-stone-500">
+						Tip: say who did what to whom, and what harm, dispute or right is at stake. Legal
+						context helps the spotter find the right issues.
+					</p>
+				{/if}
 
 				<div class="flex flex-wrap items-center gap-2">
 					<button

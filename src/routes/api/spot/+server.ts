@@ -1,5 +1,5 @@
 import { OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL } from '$app/env/private';
-import { MAX_FACTS, MIN_FACTS } from '#lib/spotter.js';
+import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 import type { ActReference, SpotEvent, SpotterResult } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
@@ -189,10 +189,13 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 				controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
 
 			try {
-				send({ stage: 'verifying' });
-				if (!(await isLegalFactPattern(fetch, trimmed))) {
-					send({ notLegal: true });
-					return;
+				// Clear legal vocabulary skips the classifier call; anything unsure is checked.
+				if (!looksLegal(trimmed)) {
+					send({ stage: 'verifying' });
+					if (!(await isLegalFactPattern(fetch, trimmed))) {
+						send({ notLegal: true });
+						return;
+					}
 				}
 
 				send({ stage: 'analyzing' });

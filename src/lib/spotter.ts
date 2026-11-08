@@ -21,3 +21,38 @@ export type SpotEvent =
 	| { result: SpotterResult }
 	| { notLegal: true }
 	| { error: string };
+
+/**
+ * Legal-context vocabulary. A trailing `$` means the whole word; otherwise the
+ * term is a word prefix (so "negligen" matches negligent and negligence).
+ */
+const LEGAL_TERMS = [
+	'contract', 'agreement', 'breach', 'negligen', 'liab', 'damages$', 'injur', 'compensat',
+	'tenant', 'landlord', 'lease', 'rent$', 'rental', 'evict', 'deposit', 'employer', 'employee',
+	'dismiss', 'terminat', 'wages$', 'salary', 'notice$', 'sue$', 'sued$', 'suit$', 'court',
+	'judge$', 'plaintiff', 'defendant', 'accused$', 'victim', 'police', 'arrest', 'fir$', 'charged$',
+	'offence', 'offense', 'crime', 'criminal', 'theft', 'stole', 'robb', 'assault', 'murder',
+	'fraud', 'cheat', 'forge', 'defam', 'threat', 'trespass', 'property', 'possession', 'ownership',
+	'inherit', 'heir$', 'heirs$', 'will$', 'estate$', 'divorce', 'custody', 'marriage', 'maintenance$',
+	'consent', 'void$', 'illegal', 'unlawful', 'statute', 'section$', 'act$', 'duty$', 'claim',
+	'seller', 'buyer', 'vendor', 'purchaser', 'warranty', 'defect', 'refund', 'loan$', 'mortgage',
+	'default', 'cheque', 'bounced$', 'guarantee', 'partner', 'shareholder', 'tax$', 'licen',
+	'insur', 'arbitrat', 'injunction', 'tort$', 'witness', 'evidence', 'bail$', 'sentenc', 'appeal',
+	'petition', 'tribunal', 'consumer', 'patent', 'copyright', 'trademark', 'rights$', 'legal'
+].map((term) => {
+	const exact = term.endsWith('$');
+	const word = exact ? term.slice(0, -1) : term;
+	return new RegExp(`\\b${word}${exact ? '\\b' : ''}`, 'i');
+});
+
+/** Distinct legal terms found in the text. */
+export function legalSignals(text: string): number {
+	return LEGAL_TERMS.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
+export const MIN_LEGAL_SIGNALS = 2;
+
+/** Heuristic only: true means "clearly legal", false means "unsure", never "reject". */
+export function looksLegal(text: string): boolean {
+	return legalSignals(text) >= MIN_LEGAL_SIGNALS;
+}

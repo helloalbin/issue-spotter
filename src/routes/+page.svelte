@@ -189,10 +189,24 @@
 			</form>
 
 			{#if errorMessage}
-				<p class="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+				<p
+					role="alert"
+					class="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800"
+				>
 					{errorMessage}
 				</p>
 			{/if}
+
+			<div role="status" aria-live="polite">
+				{#if statusText}
+					<p class="mt-4 text-sm text-stone-600">{statusText}</p>
+				{/if}
+				{#if notice}
+					<p class="mt-4 rounded-lg border border-stone-300 bg-stone-100 p-3 text-sm text-stone-700">
+						{notice}
+					</p>
+				{/if}
+			</div>
 		</div>
 
 		{#if isLoading}

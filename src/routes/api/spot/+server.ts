@@ -94,7 +94,8 @@ async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<string
 				]
 			})
 		});
-	} catch {
+	} catch (error) {
+		console.error('Model provider request failed:', error, (error as Error)?.cause);
 		throw new SpotError('Unable to reach the model provider.');
 	}
 

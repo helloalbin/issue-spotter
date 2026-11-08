@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { heatmap, weekly } from '#lib/activity.js';
+	import { heatmap, levelOf, weekly } from '#lib/activity.js';
 	import type { Activity } from '#lib/activity.js';
 
 	type Props = { activity: Activity; now: number };
@@ -28,6 +28,9 @@
 	let activeDays = $derived(map.columns.flat().filter((cell) => cell.count > 0));
 
 	const LEVEL = ['bg-heat-0', 'bg-heat-1', 'bg-heat-2', 'bg-heat-3', 'bg-text-primary'];
+	/** Weeks are drawn as the same squares as the daily grid, seven to a column, filled from the bottom. */
+	const ROWS = 7;
+	const filled = (value: number) => (value > 0 ? Math.min(ROWS, Math.ceil((value / tallest) * ROWS)) : 0);
 	const plural = (n: number) => `${n.toLocaleString()} ${n === 1 ? 'analysis' : 'analyses'}`;
 	const dateLabel = (key: string) => {
 		const [y, m, d] = key.split('-').map(Number);
@@ -110,18 +113,20 @@
 							<span class="text-[10px] leading-none whitespace-nowrap text-text-muted" style="grid-column: {month.column + 1}">{month.label}</span>
 						{/each}
 					</div>
-					<div class="grid h-24 gap-[3px]" style="grid-template-columns: repeat({shown.length}, minmax(0, 1fr))">
+					<div class="grid gap-[3px]" style="grid-template-columns: repeat({shown.length}, minmax(0, 1fr))">
 						{#each shown as bar}
+							{@const count = filled(bar.value)}
+							{@const level = levelOf(bar.value, tallest)}
+							<!-- A week is a column of squares: the more analyses, the more of them are filled, so it reads as a bar. -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
-								class="flex items-end rounded-[2px] bg-heat-0"
+								class="flex flex-col-reverse gap-[3px]"
 								onpointerenter={(event) => show(event, bar.title, plural(bar.value))}
 								onpointerdown={(event) => show(event, bar.title, plural(bar.value))}
 							>
-								<div
-									class="w-full rounded-[2px] {bar.value === tallest ? 'bg-text-primary' : 'bg-heat-3'}"
-									style="height: {bar.value > 0 ? Math.max(6, (bar.value / tallest) * 100) : 0}%"
-								></div>
+								{#each { length: ROWS } as _, row}
+									<div class="h-[11px] rounded-[2px] {row < count ? LEVEL[level] : LEVEL[0]}"></div>
+								{/each}
 							</div>
 						{/each}
 					</div>

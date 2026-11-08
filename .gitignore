@@ -22,8 +22,8 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Design
-design/spotter.pen
+# Design (local only, never committed)
+design/
 
 # Cloudflare
 .wrangler

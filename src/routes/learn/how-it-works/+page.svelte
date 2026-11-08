@@ -101,7 +101,18 @@
 		month.
 	</p>
 
-	<h2>9. What to keep in mind</h2>
+	<h2>9. Checking citations</h2>
+	<p>
+		Switch on <strong>Verify cites</strong> and paste up to five citations, with the point each is
+		cited for if you can. {SITE_NAME} checks three things for each: that the judgment exists (a page
+		about that case was found), that the details you wrote match it (the parties, the year, the court
+		and the law-report reference), and that it says what you cite it for, with the passage quoted. The
+		first two are worked out by the app itself. A citation it cannot find is not declared false, and a
+		case that shares its party names with another is flagged. It does not check whether the case has
+		since been overruled.
+	</p>
+
+	<h2>10. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case

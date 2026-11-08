@@ -72,6 +72,15 @@
 		month, using the same random ID and hashed IP address as your searches.
 	</p>
 
+	<h2>Checking citations</h2>
+	<p>
+		The citations you paste, and the point each is cited for, are sent to the AI model provider,
+		which splits them up and searches court and statute websites for each judgment. Our server then
+		fetches those pages and sends their text to the same provider to check whether each says what
+		you cite it for. The report is not stored by us; it stays in your browser. We count checks per
+		month using the same random ID and hashed IP address as your searches.
+	</p>
+
 	<h2>Comparing cases</h2>
 	<p>
 		The names you give are sent to the AI model provider, which searches court and statute websites

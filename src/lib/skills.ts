@@ -13,7 +13,7 @@ export const SKILLS: { id: SkillId; label: string; icon: IconName; available: bo
 	{ id: 'deep-research', label: 'Deep research', icon: 'telescope', available: true },
 	{ id: 'compare-cases', label: 'Compare cases', icon: 'gitCompare', available: true },
 	{ id: 'counter-arguments', label: 'Counter-args', icon: 'swords', available: true },
-	{ id: 'verify-cites', label: 'Verify cites', icon: 'badgeCheck', available: false },
+	{ id: 'verify-cites', label: 'Verify cites', icon: 'badgeCheck', available: true },
 	{ id: 'summarize', label: 'Summarize', icon: 'list', available: true }
 ];
 

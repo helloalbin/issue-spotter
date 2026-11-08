@@ -14,12 +14,15 @@
 		research?: QuotaInfo | null;
 		/** Case comparisons are counted by the month too. */
 		compare?: QuotaInfo | null;
+		/** Citation checks are counted by the month too. */
+		verify?: QuotaInfo | null;
 		outOfSearches: boolean;
 	};
-	let { docked = false, quota, research = null, compare = null, outOfSearches }: Props = $props();
+	let { docked = false, quota, research = null, compare = null, verify = null, outOfSearches }: Props = $props();
 	let outOfResearch = $derived(
 		(workspace.researchMode && research !== null && research.remaining === 0) ||
-			(workspace.compareMode && compare !== null && compare.remaining === 0)
+			(workspace.compareMode && compare !== null && compare.remaining === 0) ||
+			(workspace.verifyMode && verify !== null && verify.remaining === 0)
 	);
 
 	// The primary button says what pressing it will do.
@@ -27,7 +30,9 @@
 		!workspace.facts.trim() && workspace.draftAttachments.some((attachment) => attachment.kind === 'file')
 	);
 	let primaryLabel = $derived(
-		workspace.compareMode
+		workspace.verifyMode
+			? 'Check citations'
+			: workspace.compareMode
 			? 'Find cases'
 			: workspace.researchMode
 			? 'Research'
@@ -40,8 +45,8 @@
 					: 'Spot issues'
 	);
 	let primaryIcon = $derived(
-		workspace.compareMode ? 'gitCompare' : workspace.researchMode ? 'telescope' : fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
-	) as 'arrowUp' | 'squarePen' | 'sparkles' | 'telescope' | 'gitCompare';
+		workspace.verifyMode ? 'badgeCheck' : workspace.compareMode ? 'gitCompare' : workspace.researchMode ? 'telescope' : fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
+	) as 'arrowUp' | 'squarePen' | 'sparkles' | 'telescope' | 'gitCompare' | 'badgeCheck';
 
 	/** A file was sent on its own and the app is waiting to hear what to do with it. */
 	let awaitingFile = $derived(workspace.thread.some((exchange) => exchange.kind === 'reading'));
@@ -141,7 +146,9 @@
 			required={workspace.draftAttachments.length === 0}
 			autocomplete="off"
 			rows={docked ? 2 : 5}
-			placeholder={workspace.compareMode
+			placeholder={workspace.verifyMode
+				? 'Paste the citations to check, one per line, with the point each is cited for…'
+				: workspace.compareMode
 				? 'Name the two cases, for example: Pankaj Bansal v. Union of India and Ram Kishor Arora v. Directorate of Enforcement…'
 				: docked
 				? workspace.followUp
@@ -178,8 +185,24 @@
 			</div>
 		{/if}
 
-		{#if workspace.skills.length > 0 || workspace.researchMode || workspace.compareMode || workspace.draftAttachments.length > 0 || workspace.fileStatus}
+		{#if workspace.skills.length > 0 || workspace.researchMode || workspace.compareMode || workspace.verifyMode || workspace.draftAttachments.length > 0 || workspace.fileStatus}
 			<ul class="flex flex-wrap gap-2" aria-label="Added to this message">
+				{#if workspace.verifyMode}
+					<li
+						class="inline-flex items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
+					>
+						<Icon name="badgeCheck" size={12} class="text-accent-text" />
+						Verify cites
+						<button
+							type="button"
+							onclick={() => workspace.toggleVerify()}
+							aria-label="Turn off Verify cites"
+							class="grid size-4 place-items-center rounded-pill text-text-tertiary hover:text-text-primary"
+						>
+							<Icon name="x" size={11} />
+						</button>
+					</li>
+				{/if}
 				{#if workspace.compareMode}
 					<li
 						class="inline-flex items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
@@ -310,7 +333,7 @@
 					variant="primary"
 					type="submit"
 					class="gap-[7px] px-4 py-2.5 shadow-button"
-					disabled={workspace.researchMode || workspace.compareMode ? outOfResearch : workspace.overLimit || outOfSearches}
+					disabled={workspace.researchMode || workspace.compareMode || workspace.verifyMode ? outOfResearch : workspace.overLimit || outOfSearches}
 				>
 					<Icon name={primaryIcon} />
 					{primaryLabel}
@@ -324,7 +347,9 @@
 	<div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 text-caption text-text-tertiary">
 		{#if docked && !workspace.isLoading}
 			<p>
-				{#if workspace.compareMode}
+				{#if workspace.verifyMode}
+					Paste up to five citations, with the point each is cited for if you can. It checks each case exists, that your details match it, and that it says what you cite it for.
+				{:else if workspace.compareMode}
 					Name the two cases, by party names or part of a citation. You confirm them before anything is compared.
 				{:else if workspace.researchMode}
 					Name a point within your case to research on court and statute sites. It uses one of your deep research for the month.
@@ -339,7 +364,11 @@
 				{/if}
 			</p>
 		{/if}
-		{#if workspace.compareMode && compare}
+		{#if workspace.verifyMode && verify}
+			<p class="ml-auto tabular-nums">
+				{verify.remaining} of {verify.limit} citation checks left this month
+			</p>
+		{:else if workspace.compareMode && compare}
 			<p class="ml-auto tabular-nums">
 				{compare.remaining} of {compare.limit} comparisons left this month
 			</p>

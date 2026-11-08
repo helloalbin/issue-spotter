@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 
-	type Mode = 'research' | 'identify' | 'compare';
+	type Mode = 'research' | 'identify' | 'compare' | 'verify';
 	type Props = { mode?: Mode; stage: string | null };
 	let { mode = 'research', stage }: Props = $props();
 
@@ -13,6 +13,12 @@
 			{ stage: 'writing', label: 'Writing the report and checking every quote against its page' }
 		],
 		identify: [{ stage: 'identifying', label: 'Finding the two cases and checking their pages' }],
+		verify: [
+			{ stage: 'reading', label: 'Reading the citations' },
+			{ stage: 'finding', label: 'Finding each judgment' },
+			{ stage: 'opening', label: 'Opening the pages and comparing the details' },
+			{ stage: 'checking', label: 'Checking each judgment says what it is cited for' }
+		],
 		compare: [
 			{ stage: 'opening', label: 'Opening both judgments' },
 			{ stage: 'treatment', label: 'Looking for decisions that overturned either' },
@@ -22,7 +28,9 @@
 	};
 	let steps = $derived(STEPS[mode]);
 	let current = $derived(mode === 'identify' ? 0 : steps.findIndex((step) => step.stage === stage));
-	let heading = $derived(mode === 'research' ? 'RESEARCHING' : mode === 'identify' ? 'FINDING THE CASES' : 'COMPARING');
+	let heading = $derived(
+		mode === 'research' ? 'RESEARCHING' : mode === 'identify' ? 'FINDING THE CASES' : mode === 'verify' ? 'CHECKING CITATIONS' : 'COMPARING'
+	);
 </script>
 
 <section class="mx-auto w-full max-w-3xl px-6 py-8" aria-live="polite" aria-label={heading.toLowerCase()}>

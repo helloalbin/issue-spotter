@@ -90,3 +90,21 @@ test('the year in a law-report reference is not compared with the year of the de
 	assert.equal(details.reporter, 'found');
 	assert.equal(describeDetails(cited, details).mark, 'ok');
 });
+
+test('a page with the right names but not the reference cited is reported as possibly a different case', () => {
+	const cited = item({ cite: 'Rajesh Kumar v. State of Delhi, AIR 2019 SC 4455', name: 'Pankaj Bansal v. Union of India', year: '', court: '', reporter: 'AIR 2019 SC 4455' });
+	const page: Located = { n: 1, title: TITLE, page: PAGE, excerpt: PAGE, cut: false, verified: true };
+	const report = buildVerifyReport([cited], new Map([[1, page]]), new Map());
+	const lines = report.sections.find((s) => s.id === 'citations')!.children![0].lines;
+	assert.equal(lines[0].mark, 'warn');
+	assert.match(lines[0].text, /does not show what you cited \(the reference “AIR 2019 SC 4455”\).*party names are often shared/);
+	assert.match(report.sections[0].lines[1].text, /may be a different case/);
+});
+
+test('a citation with only party names is not given a plain tick', () => {
+	const page: Located = { n: 1, title: TITLE, page: PAGE, excerpt: PAGE, cut: false, verified: true };
+	const report = buildVerifyReport([item({ year: '', court: '', reporter: '', cite: 'Pankaj Bansal v. Union of India', proposition: '' })], new Map([[1, page]]), new Map());
+	const first = report.sections.find((s) => s.id === 'citations')!.children![0].lines[0];
+	assert.equal(first.mark, 'warn');
+	assert.match(first.text, /Only the names were given/);
+});

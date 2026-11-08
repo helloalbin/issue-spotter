@@ -53,6 +53,14 @@
 
 {#snippet line(item: ReportLine)}
 	<span class="text-body leading-relaxed text-text-secondary">
+		{#if item.mark}
+			<span
+				class="mr-1 inline-flex align-text-bottom {item.mark === 'ok' ? 'text-accent-text' : item.mark === 'warn' ? 'text-text-secondary' : 'text-danger'}"
+			>
+				<Icon name={item.mark === 'ok' ? 'badgeCheck' : item.mark === 'warn' ? 'info' : 'x'} size={13} />
+				<span class="sr-only">{item.mark === 'ok' ? 'Checked' : item.mark === 'warn' ? 'Worth a look' : 'Not found'}:</span>
+			</span>
+		{/if}
 		{item.text}
 		{#each item.cites as n}
 			<a
@@ -61,7 +69,9 @@
 				aria-label="Source {n}">[{n}]</a
 			>
 		{/each}
-		{#if item.check?.status === 'confirmed'}
+		{#if item.mark}
+			<!-- the icon above says how this came out -->
+		{:else if item.check?.status === 'confirmed'}
 			<span
 				class="ml-0.5 inline-flex align-text-bottom text-accent-text"
 				title="Confirmed: the page contains the passage quoted below"
@@ -88,7 +98,7 @@
 
 <header class="mt-8">
 	<p class="type-meta tracking-widest text-accent-text">
-		{report.kind === 'compare' ? 'CASE COMPARISON' : 'RESEARCH REPORT'} · {brief.sources.length}
+		{report.kind === 'compare' ? 'CASE COMPARISON' : report.kind === 'verify' ? 'CITATION CHECK' : 'RESEARCH REPORT'} · {brief.sources.length}
 		{brief.sources.length === 1 ? 'SOURCE' : 'SOURCES'}
 	</p>
 	<h2 class="type-h3 mt-1">{report.title}</h2>

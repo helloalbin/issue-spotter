@@ -37,6 +37,17 @@
 		before relying on it.</strong> Deep research is limited to a few runs a month.
 	</p>
 
+	<h2>Citation checks do not prove a citation right or wrong</h2>
+	<p>
+		A citation check looks for the judgment on a few legal sites, compares the details you gave
+		with the page, and asks a model whether the judgment says what you cite it for. A real case can
+		be missed, a page with the same party names can be a different case, and a long judgment is read
+		only in the parts judged most relevant. <strong>"Not found" does not mean a case does not
+		exist, and a tick does not mean a citation is safe to use.</strong> A check also does not tell
+		you whether a case has since been overruled or distinguished. Read the judgment before you cite
+		it.
+	</p>
+
 	<h2>Case comparisons are not verified advice</h2>
 	<p>
 		The comparison is written from the pages of the two judgments and of any other decision the

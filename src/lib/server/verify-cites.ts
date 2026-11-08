@@ -75,8 +75,14 @@ export function parseItems(reply: string): Item[] {
 }
 
 export const FIND_INSTRUCTIONS =
-	'For each numbered citation, use web search to find the judgment page it refers to. Prefer an Indian Kanoon document page (indiankanoon.org/doc/...), because the app can read it; give an official court page only if there is no Indian Kanoon copy. ' +
+	'For each numbered citation, run a separate web search, using the party names, to find the judgment page it refers to. Prefer an Indian Kanoon document page (indiankanoon.org/doc/...), because the app can read it; give an official court page only if there is no Indian Kanoon copy. ' +
 	'Find the case that was cited; never substitute a different case with a similar name, and if you cannot find it, give an empty url. Do not decide whether the citation is right. ' +
+	'Reply with JSON only: {"found":[{"id":1,"url":""}]}';
+
+/** The second try for citations the first search missed: looser, by party names alone. */
+export const FIND_RETRY_INSTRUCTIONS =
+	'An earlier search did not find the judgments for these numbered citations. Search again for each one separately, this time using only the party names, in different spellings ("v.", "vs", "versus"), and the year or court only if the names alone give too many results. ' +
+	'Prefer an Indian Kanoon document page (indiankanoon.org/doc/...). Find the case that was cited; never substitute a different case with a similar name, and if you still cannot find it, give an empty url. Do not decide whether the citation is right. ' +
 	'Reply with JSON only: {"found":[{"id":1,"url":""}]}';
 
 /** The numbered citations for the search. */
@@ -262,8 +268,26 @@ export function buildVerifyReport(
 		};
 		const summary: string[] = [];
 
-		// Level 1: does it exist.
-		if (page?.verified) {
+		// Level 1: does it exist. Party names are often shared, so a page that has the names but not the
+		// reference, year or court that were cited is reported as a possible different case.
+		const details = page?.verified ? checkDetails(item, page.title, page.page) : null;
+		const unconfirmed = details && (details.reporter === 'not-found' || details.year === 'mismatch' || details.court === 'mismatch');
+		if (page?.verified && unconfirmed) {
+			found += 1;
+			lines.push({
+				text: `Found a judgment with these parties: ${page.title}. The page does not show what you cited (${[details.reporter === 'not-found' ? `the reference “${item.reporter}”` : '', details.year === 'mismatch' ? 'the year' : '', details.court === 'mismatch' ? 'the court' : ''].filter(Boolean).join(', ')}), so check that it is the same case: party names are often shared.`,
+				cites: [page.n],
+				basis: 'app',
+				mark: 'warn'
+			});
+			note('warn');
+			summary.push('a judgment with these parties was found, but it may be a different case');
+		} else if (page?.verified && details && details.reporter === 'not-given' && details.year === 'not-given' && details.court === 'not-given') {
+			found += 1;
+			lines.push({ text: `Found a judgment with these parties: ${page.title}. Only the names were given, so this shows such a judgment exists, not that it is the one you meant.`, cites: [page.n], basis: 'app', mark: 'warn' });
+			note('warn');
+			summary.push('a judgment with these parties was found; no reference, year or court was given to confirm it is the one meant');
+		} else if (page?.verified) {
 			found += 1;
 			lines.push({ text: `Found: ${page.title}.`, cites: [page.n], basis: 'app', mark: 'ok' });
 			summary.push('found');
@@ -285,8 +309,7 @@ export function buildVerifyReport(
 		}
 
 		// Level 2: do the details match.
-		if (page?.verified) {
-			const details = checkDetails(item, page.title, page.page);
+		if (page?.verified && details) {
 			const described = describeDetails(item, details);
 			lines.push({ text: clampWords(described.text, 70), cites: [page.n], basis: 'app', mark: described.mark });
 			note(described.mark);

@@ -8,6 +8,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Progress from '#lib/components/Progress.svelte';
 	import CompareCard from '#lib/components/CompareCard.svelte';
+	import VerifyCard from '#lib/components/VerifyCard.svelte';
 	import ReadingCard from '#lib/components/ReadingCard.svelte';
 	import ResearchCard from '#lib/components/ResearchCard.svelte';
 	import ResearchProgress from '#lib/components/ResearchProgress.svelte';
@@ -43,6 +44,7 @@
 	let quota = $derived(workspace.liveQuota ?? data.quota);
 	let research = $derived(workspace.researchQuota ?? data.research);
 	let compare = $derived(workspace.compareQuota ?? data.compare);
+	let verify = $derived(workspace.verifyQuota ?? data.verify);
 	let outOfSearches = $derived(quota !== null && quota.remaining === 0);
 	// Local reset time is only known in the browser, so wait for mount to avoid a hydration mismatch.
 	let resetTime = $derived(
@@ -100,6 +102,13 @@
 					onNext={(action) => workspace.runNext(action)}
 					onEdit={() => workspace.editLast()}
 				/>
+			{:else if exchange.kind === 'verify'}
+				<VerifyCard
+					{exchange}
+					{index}
+					isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
+					onEdit={() => workspace.editLast()}
+				/>
 			{:else if exchange.kind === 'compare'}
 				<CompareCard
 					{exchange}
@@ -135,7 +144,7 @@
 				<div class="mx-auto w-full max-w-3xl border-t border-border-subtle px-6 pt-8">
 					<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
 						<span class="type-meta tracking-widest text-text-tertiary">
-							{workspace.identifying ? 'COMPARE CASES' : workspace.researching ? 'DEEP RESEARCH' : 'ADDED TO CASE'}
+							{workspace.identifying ? 'COMPARE CASES' : workspace.verifying ? 'VERIFY CITES' : workspace.researching ? 'DEEP RESEARCH' : 'ADDED TO CASE'}
 						</span>
 						<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{workspace.pending}</p>
 						<AttachedPages pages={workspace.draftAttachments} />
@@ -144,6 +153,8 @@
 			{/if}
 			{#if workspace.identifying}
 				<ResearchProgress mode="identify" stage="identifying" />
+			{:else if workspace.verifying}
+				<ResearchProgress mode="verify" stage={workspace.verifyStage} />
 			{:else if workspace.comparing}
 				<ResearchProgress mode="compare" stage={workspace.compareStage} />
 			{:else if workspace.researching}
@@ -177,7 +188,7 @@
 				</div>
 
 				<div>
-					<Composer {quota} {research} {compare} {outOfSearches} />
+					<Composer {quota} {research} {compare} {verify} {outOfSearches} />
 					<div class="mt-3 space-y-3">{@render messages()}</div>
 				</div>
 
@@ -219,7 +230,7 @@
 					<ErrorNotice message={workspace.errorMessage} />
 				</div>
 			{/if}
-			<Composer docked {quota} {research} {compare} {outOfSearches} />
+			<Composer docked {quota} {research} {compare} {verify} {outOfSearches} />
 			<div class="mt-3 space-y-3">{@render messages()}</div>
 		</div>
 	</div>

@@ -18,6 +18,7 @@ import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import { RESEARCH_DOMAINS, cleanUrl, isOfficialHost } from '#lib/server/research.js';
 import {
 	FIND_INSTRUCTIONS,
+	FIND_RETRY_INSTRUCTIONS,
 	PARSE_INSTRUCTIONS,
 	PARSE_SCHEMA,
 	SUPPORT_INSTRUCTIONS,
@@ -151,6 +152,37 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				searches = found.searches;
 				urls = parseFound(found.text);
 				console.log(JSON.stringify({ event: 'llm_usage', call: 'verify_find', model: searchModel, promptTokens: findPayload?.usage?.input_tokens ?? null, completionTokens: findPayload?.usage?.output_tokens ?? null, webSearches: searches }));
+
+				// A citation the search missed gets one more try by party names alone, so that a real case
+				// is not reported as not found because of one unlucky search.
+				const missed = items.filter((item) => !urls.has(item.id));
+				if (missed.length > 0) {
+					try {
+						const retry = await post(
+							fetch,
+							'/responses',
+							{
+								model: searchModel,
+								instructions: FIND_RETRY_INSTRUCTIONS,
+								input: findInput(missed),
+								tools: [{ type: 'web_search', filters: { allowed_domains: RESEARCH_DOMAINS }, search_context_size: 'low', user_location: { type: 'approximate', country: 'IN' } }],
+								max_tool_calls: Math.min(2 * missed.length, DEEP_RESEARCH_MAX_SEARCHES),
+								max_output_tokens: 1200
+							},
+							deadline.signal
+						);
+						if (retry.ok) {
+							const retryPayload = await retry.json();
+							const again = readAnswer(retryPayload);
+							searches += again.searches;
+							for (const [id, url] of parseFound(again.text)) if (missed.some((item) => item.id === id)) urls.set(id, url);
+							console.log(JSON.stringify({ event: 'llm_usage', call: 'verify_find_retry', model: searchModel, promptTokens: retryPayload?.usage?.input_tokens ?? null, completionTokens: retryPayload?.usage?.output_tokens ?? null, webSearches: again.searches, missed: missed.length, recovered: missed.filter((item) => urls.has(item.id)).length }));
+						}
+					} catch (error) {
+						if (cancelled) return;
+						console.error('The second search failed:', error);
+					}
+				}
 
 				// 3. Open the pages. One page can answer more than one citation.
 				send({ stage: 'opening' });

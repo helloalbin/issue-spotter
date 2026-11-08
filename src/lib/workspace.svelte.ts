@@ -18,6 +18,7 @@ import type {
 	CompareEvent,
 	QuotaInfo,
 	ResearchBrief,
+	VerifyEvent,
 	ResearchEvent,
 	SpotEvent,
 	SourceMatch,
@@ -71,7 +72,14 @@ export type CompareExchange = ExchangeBase & {
 	brief?: ResearchBrief;
 };
 
-export type Exchange = AnalysisExchange | ReadingExchange | ResearchExchange | CompareExchange;
+/** Citations pasted to be checked, and the report on them. */
+export type VerifyExchange = ExchangeBase & {
+	kind: 'verify';
+	input: string;
+	brief: ResearchBrief;
+};
+
+export type Exchange = AnalysisExchange | ReadingExchange | ResearchExchange | CompareExchange | VerifyExchange;
 
 /** What the app offers to do after reading a file the user sent on its own. */
 export type NextAction = {
@@ -157,6 +165,12 @@ class Workspace {
 	/** The comparison itself is running. */
 	comparing = $state(false);
 	compareStage = $state<'opening' | 'treatment' | 'reading' | 'writing' | null>(null);
+	/** Whether the next message is citations to check. */
+	verifyMode = $state(false);
+	verifying = $state(false);
+	verifyStage = $state<'reading' | 'finding' | 'opening' | 'checking' | null>(null);
+	/** Remaining citation checks this month. */
+	verifyQuota = $state<QuotaInfo | null>(null);
 	/** Remaining comparisons this month. */
 	compareQuota = $state<QuotaInfo | null>(null);
 	/** Remaining deep research this month; the value loaded with the page until a run updates it. */
@@ -216,6 +230,7 @@ class Workspace {
 				this.liveQuota = payload.quota;
 				this.researchQuota = payload.research ?? null;
 				this.compareQuota = payload.compare ?? null;
+				this.verifyQuota = payload.verify ?? null;
 			}
 		} catch {
 			// The counter keeps its last value.
@@ -254,6 +269,9 @@ class Workspace {
 		this.thread = [];
 		this.researchMode = false;
 		this.compareMode = false;
+		this.verifyMode = false;
+		this.verifying = false;
+		this.verifyStage = null;
 		this.researching = false;
 		this.identifying = false;
 		this.comparing = false;
@@ -273,7 +291,10 @@ class Workspace {
 	toggleResearch() {
 		if (!this.researchMode && !this.followUp) return;
 		this.researchMode = !this.researchMode;
-		if (this.researchMode) this.compareMode = false;
+		if (this.researchMode) {
+			this.compareMode = false;
+			this.verifyMode = false;
+		}
 		this.errorMessage = '';
 		this.notice = '';
 	}
@@ -281,7 +302,21 @@ class Workspace {
 	/** Comparing two cases needs no case of its own: the user names the two. */
 	toggleCompare() {
 		this.compareMode = !this.compareMode;
-		if (this.compareMode) this.researchMode = false;
+		if (this.compareMode) {
+			this.researchMode = false;
+			this.verifyMode = false;
+		}
+		this.errorMessage = '';
+		this.notice = '';
+	}
+
+	/** Checking citations needs no case: the user pastes them. */
+	toggleVerify() {
+		this.verifyMode = !this.verifyMode;
+		if (this.verifyMode) {
+			this.researchMode = false;
+			this.compareMode = false;
+		}
 		this.errorMessage = '';
 		this.notice = '';
 	}
@@ -435,6 +470,9 @@ class Workspace {
 		} else if (last.kind === 'compare') {
 			this.facts = last.input;
 			this.compareMode = true;
+		} else if (last.kind === 'verify') {
+			this.facts = last.input;
+			this.verifyMode = true;
 		} else {
 			this.facts = last.added;
 		}
@@ -538,6 +576,7 @@ class Workspace {
 		if (this.isLoading) return;
 		this.errorMessage = '';
 		this.notice = '';
+		if (this.verifyMode) return this.#verify();
 		if (this.compareMode) return this.#identify();
 		if (this.researchMode) return this.#research();
 
@@ -890,6 +929,88 @@ class Workspace {
 				this.compareStage = null;
 				// A comparison that did not finish goes back to being confirmed, so it can be tried again.
 				if (exchange.state === 'comparing') exchange.state = 'confirm';
+			}
+		}
+	}
+
+	/** Checks the pasted citations and adds the report to the thread. */
+	async #verify() {
+		const input = this.facts.trim();
+		if (input.length < 20) {
+			this.errorMessage = 'Paste the citations you want checked, with the point each is cited for if you can.';
+			return;
+		}
+
+		this.isLoading = true;
+		this.verifying = true;
+		this.verifyStage = 'reading';
+		this.pending = input;
+		this.#abort?.abort();
+		const run = (this.#run += 1);
+		this.#abort = new AbortController();
+		let finished = false;
+
+		try {
+			const response = await fetch('/api/verify', {
+				method: 'POST',
+				signal: this.#abort.signal,
+				headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+				body: JSON.stringify({ input })
+			});
+
+			if (!response.ok || !response.body) {
+				const payload = await response.json().catch(() => null);
+				if (payload?.verify) this.verifyQuota = payload.verify;
+				if (payload?.code === 'auth_invalid') {
+					this.errorMessage = payload.error;
+					await auth.signOut();
+				} else {
+					this.errorMessage = payload?.error ?? 'Unable to start the check right now.';
+				}
+				return;
+			}
+
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+			while (true) {
+				const { done, value } = await reader.read();
+				buffer += decoder.decode(value, { stream: !done });
+				const lines = buffer.split('\n');
+				buffer = done ? '' : (lines.pop() ?? '');
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					if (run !== this.#run) return;
+					const event: VerifyEvent = JSON.parse(line);
+					if ('verify' in event) this.verifyQuota = event.verify;
+					else if ('stage' in event) this.verifyStage = event.stage;
+					else if ('brief' in event) {
+						finished = true;
+						this.thread.push({ kind: 'verify', added: '', attachments: [], input, brief: event.brief });
+						this.facts = '';
+						this.verifyMode = false;
+					} else if ('error' in event) {
+						finished = true;
+						this.errorMessage = event.error;
+					}
+				}
+				if (done) break;
+			}
+			if (!finished) this.errorMessage = 'The check ended unexpectedly. Please try again.';
+		} catch (error) {
+			if (run !== this.#run) return;
+			if ((error as Error)?.name === 'AbortError') {
+				this.notice = 'Check stopped. Your text is kept, and the check still counts toward this month.';
+			} else {
+				this.errorMessage = 'Network error. Please try again.';
+			}
+		} finally {
+			if (run === this.#run) {
+				this.#abort = null;
+				this.isLoading = false;
+				this.verifying = false;
+				this.verifyStage = null;
+				this.pending = null;
 			}
 		}
 	}

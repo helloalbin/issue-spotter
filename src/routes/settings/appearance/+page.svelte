@@ -6,20 +6,6 @@
 
 	const LABELS: Record<Mode, string> = { light: 'Light', system: 'System', dark: 'Dark' };
 
-	/** What the palette is right now, read from the theme itself so these rows can never disagree with it. */
-	let palette = $state({ background: '', foreground: '' });
-	$effect(() => {
-		theme.resolved;
-		const style = getComputedStyle(document.documentElement);
-		palette = {
-			background: style.getPropertyValue('--bg').trim().toUpperCase(),
-			foreground: style.getPropertyValue('--text-primary').trim().toUpperCase()
-		};
-	});
-
-	/** The accent is a silver in the dark theme and a graphite in the light one. */
-	let accentName = $derived(theme.resolved === 'light' ? 'Graphite' : 'Silver');
-
 	/** Left and right arrows move the choice, as in any group of radio buttons. */
 	function onKeydown(event: KeyboardEvent) {
 		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
@@ -71,35 +57,4 @@
 			{/each}
 		</div>
 	</div>
-
-	<dl class="flex flex-col rounded-lg border border-border-subtle bg-surface-1 px-4 py-1 [&>div+div]:border-t [&>div+div]:border-border-subtle">
-		<div class="flex items-center justify-between gap-4 py-3.5">
-			<dt class="text-body text-text-secondary">Theme</dt>
-			<dd class="rounded-md border border-border-default bg-surface-2 px-[11px] py-[7px] text-[13px] font-medium text-text-primary">{SITE_NAME}</dd>
-		</div>
-		<div class="flex items-center justify-between gap-4 py-3.5">
-			<dt class="text-body text-text-secondary">Accent</dt>
-			<dd class="flex items-center gap-[9px]">
-				<span class="size-4 rounded-sm border border-border-default bg-accent" aria-hidden="true"></span>
-				<span class="text-caption text-text-tertiary">{accentName}</span>
-			</dd>
-		</div>
-		<div class="flex items-center justify-between gap-4 py-3.5">
-			<dt class="text-body text-text-secondary">Background</dt>
-			<dd class="flex items-center gap-[9px]">
-				<span class="size-4 rounded-sm border border-border-default bg-bg" aria-hidden="true"></span>
-				<span class="text-caption text-text-tertiary">{palette.background}</span>
-			</dd>
-		</div>
-		<div class="flex items-center justify-between gap-4 py-3.5">
-			<dt class="text-body text-text-secondary">Foreground</dt>
-			<dd class="flex items-center gap-[9px]">
-				<span class="size-4 rounded-sm border border-border-default bg-text-primary" aria-hidden="true"></span>
-				<span class="text-caption text-text-tertiary">{palette.foreground}</span>
-			</dd>
-		</div>
-	</dl>
-	<p class="-mt-1 text-caption text-text-tertiary">
-		{SITE_NAME} has one palette, which follows the mode you choose. System switches with your device.
-	</p>
 </section>

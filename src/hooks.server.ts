@@ -3,6 +3,7 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { createRemoteJWKSet } from 'jose';
 import { QUOTA_SALT } from '$app/env/private';
 import { FIREBASE_AUTH_EMULATOR_URL, FIREBASE_PROJECT_ID } from '$app/env/public';
+import { networkOf } from '#lib/server/network.js';
 import {
 	FIREBASE_JWKS_URL,
 	verifyEmulatorToken,
@@ -33,10 +34,11 @@ function quotaSalt(): string {
 	return 'dev-salt';
 }
 
+/** Hashes the client's network (see `networkOf`), not the raw address. */
 async function hashIp(ip: string): Promise<string> {
 	const digest = await crypto.subtle.digest(
 		'SHA-256',
-		new TextEncoder().encode(`${quotaSalt()}:${ip}`)
+		new TextEncoder().encode(`${quotaSalt()}:${networkOf(ip)}`)
 	);
 	return [...new Uint8Array(digest)]
 		.slice(0, 16)

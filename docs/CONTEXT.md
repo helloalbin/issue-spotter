@@ -19,7 +19,7 @@ Use these terms consistently in code, UI copy, prompts and commits.
 | **Spot** | One analysis run: facts in, `SpotterResult` out. The endpoint is `/api/spot`. |
 | **Verification** | The check that the facts look like a legal fact pattern (keyword heuristic, then a classifier call). |
 | **Quota** | The daily number of free spots for an anonymous visitor. |
-| **Visitor** | An anonymous caller, identified by a random cookie and a hashed IP. |
+| **Visitor** | An anonymous caller, identified by a random cookie and a hashed network. The network is the IPv4 address, or the /64 of an IPv6 address (`networkOf`, `src/lib/server/network.ts`), because one customer can switch among the addresses of a /64 and would otherwise get a fresh network limit each time. Shared /64s (a campus, a building) share one network allowance. |
 | **Signed-in user** | A caller with a verified Firebase ID token, identified by their Firebase uid. |
 | **Subject** | Who a quota is counted for: a visitor's cookie id or a user's uid, plus the hashed IP. |
 | **Tier** (planned) | A signed-in mode: **Investigative** (today's analysis) or **Research** (deeper). |

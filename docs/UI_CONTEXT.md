@@ -64,7 +64,7 @@ Pages: `/` (the analysis), `/samples`, `/learn/how-it-works`, `/learn/guide`, `/
 
 The page is a conversation. With an analysis on screen, the composer adds facts to that case instead of starting a new one, and nothing already on screen is replaced.
 
-- **A thread of exchanges.** The workspace keeps `thread`: one `Exchange` per message, with what the user typed, the analysis of the whole case up to that message, and that analysis's own verified links. Each follow-up appends a new block below the earlier ones: the message in a bubble labelled "ADDED TO CASE", then an "Updated analysis" (headed "Covers all the facts so far, including this message") in the same layout as the first. The earlier analyses stay exactly as they were, and the page scrolls to the start of the new one.
+- **A thread of exchanges.** The workspace keeps `thread`: one `Exchange` per message, with what the user typed, the analysis of the whole case up to that message, and that analysis's own verified links. Each follow-up appends a new block below the earlier ones: the message in a bubble labelled "ADDED TO CASE", then an **update**, which is deliberately not the first analysis printed again (see "What an update looks like"). The earlier analyses stay exactly as they were, and the page scrolls to the start of the new one.
 - **While it runs,** the earlier blocks stay, the message being analysed appears as a bubble below them, and the progress tree follows it ("Reading the whole case again, with the facts you added."). The composer is locked with Stop.
 - **Combining.** On submit, `caseText` (`src/lib/case.ts`) sends the earlier messages followed by the new one, so the model reads the whole case. The model sees each later message prefixed `Further facts:` and the system prompt says to treat them as one case. That label is for the model only and never appears in the UI or the export.
 - **The composer changes with the conversation.** The primary button reads **Spot issues** (sparkles) for the first message and **Add facts** (up arrow) once there is a conversation. The placeholder is "Add more facts to this case…", with a line saying the facts are added to the case, the analysis is updated below, and it counts as one search. **Clear** empties only the draft; **New analysis** in the sidebar starts a different case.
@@ -72,6 +72,21 @@ The page is a conversation. With an analysis on screen, the composer adds facts 
 - **Limits.** The counter and the 12,000-character limit apply to the whole case, and Spot issues or Add facts is disabled over it. A follow-up needs at least 5 characters (a first message needs 20), since "It was flour." is a real follow-up.
 - **Failures leave the thread alone.** An error, a not-legal reply, Stop or a network failure adds nothing; the draft is kept to retry.
 - The verification pane describes the latest analysis, and says so ("Latest analysis") once there is more than one. Copy as Markdown on an analysis exports the case up to that message.
+
+### What an update looks like
+
+A follow-up is read against the analysis before it, so the new facts stand out instead of hiding inside a repeat of everything.
+
+- **A headline and a kicker.** "UPDATE n" in the accent color, then a one-line headline the model writes about what the new facts change (for example "Flour, not a drug: the suspicion starts to look unreasonable"). The count line reads "5 new · 5 still apply · 3 set aside".
+- **"What these facts change".** A card with an accent rail and 2 to 3 plain sentences, addressed to the student: what becomes stronger or weaker and what is newly raised.
+- **New points lead.** In each section (issues, doctrines, precedents, acts) the new entries come first with a `NEW` badge and a "+n new" chip on the heading; a section with nothing new says so ("No new precedents.").
+- **The rest folds away.** "Still applies · k" is a collapsed disclosure holding the entries the update shares with the earlier analysis, muted; "No longer central" lists, struck through, what the earlier analysis had and this one dropped.
+- **"What would sharpen this".** Up to 4 questions about facts still unknown that would change the analysis, so the next message has somewhere to go.
+- The first analysis keeps the original full layout. Case summary and Counter-arguments (the skills) are shown whole in an update.
+
+**How the comparison works.** The model is told it is writing an update, is given the earlier analysis (only the headings of each entry), and is asked to copy earlier wording where an entry still applies, add entries for what the new facts raise, and leave out what no longer matters. The page does not trust any label from the model: `compareBy` (`src/lib/diff.ts`) decides new, still applies and set aside itself, by comparing words with filler removed (a 75% overlap counts as the same entry), so a lightly rephrased entry is still recognised. Each earlier entry can match only one new entry. Verified links keep working because new entries keep their position in the updated list.
+
+Progress for an update gains "Comparing with your earlier analysis" first and "Noting what is still unknown" last.
 
 ## Composer
 

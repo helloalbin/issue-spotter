@@ -25,7 +25,7 @@
 	<ul>
 		<li>
 			<strong>If you do not sign in:</strong> a random ID stored in a cookie, and a scrambled
-			(hashed) form of your IP address. We use them only to count how many searches you have made
+			(hashed) form of your network address (your IP address, or the first half of an IPv6 address). We use them only to count how many searches you have made
 			today and to limit abuse. We cannot turn the hash back into your IP address.
 		</li>
 		<li>

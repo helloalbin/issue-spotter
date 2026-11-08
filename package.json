@@ -9,7 +9,7 @@
 	},
 	"scripts": {
 		"check:tokens": "node scripts/check-tokens.mjs",
-		"test": "node --test src/lib/server/*.test.ts",
+		"test": "node --test \"src/**/*.test.ts\"",
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",

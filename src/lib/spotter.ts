@@ -7,12 +7,31 @@ export type ActReference = {
 	relevance: string;
 };
 
+export type Precedent = {
+	name: string;
+	/** Four digits. Model-stated, so it can be wrong. */
+	year?: string;
+};
+
 export type SpotterResult = {
 	issues: string[];
 	doctrines: string[];
-	precedents: string[];
+	precedents: Precedent[];
+	acts: ActReference[];
+	/** The jurisdiction the model applied, e.g. "India". */
+	jurisdiction?: string;
+};
+
+/** Entries found so far while an analysis is still being written, by section. */
+export type Streamed = {
+	issues: string[];
+	doctrines: string[];
+	precedents: Precedent[];
 	acts: ActReference[];
 };
+
+/** What produced the analysis, for the verification pane. */
+export type AnalysisMeta = { model: string; ms: number };
 
 export type QuotaInfo = {
 	signedIn: boolean;
@@ -26,7 +45,8 @@ export type SpotSection = 'issues' | 'doctrines' | 'precedents' | 'acts';
 
 /** One finished entry of a section, sent while the analysis is still being written. */
 export type SpotItem =
-	| { section: 'issues' | 'doctrines' | 'precedents'; value: string }
+	| { section: 'issues' | 'doctrines'; value: string }
+	| { section: 'precedents'; value: Precedent }
 	| { section: 'acts'; value: ActReference };
 
 /** Newline-delimited JSON events streamed by POST /api/spot. */
@@ -36,6 +56,7 @@ export type SpotEvent =
 	| { stage: 'analyzing' }
 	| { item: SpotItem }
 	| { sectionDone: SpotSection }
+	| { meta: AnalysisMeta }
 	| { result: SpotterResult }
 	| { notLegal: true }
 	| { error: string };

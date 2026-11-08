@@ -15,7 +15,14 @@ import { subjectFor } from '#lib/server/identity.js';
 import { SectionParser } from '#lib/server/section-stream.js';
 import { quotaInfo, rejectionSubject, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
-import type { ActReference, SpotEvent, SpotItem, SpotSection, SpotterResult } from '#lib/spotter.js';
+import type {
+	ActReference,
+	Precedent,
+	SpotEvent,
+	SpotItem,
+	SpotSection,
+	SpotterResult
+} from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
 const CLASSIFIER_PROMPT =
@@ -24,8 +31,11 @@ const CLASSIFIER_PROMPT =
 
 const SYSTEM_PROMPT =
 	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. ' +
-	'Output JSON with keys: issues, doctrines, precedents, acts. ' +
-	'issues, doctrines and precedents must each map to an array of short bullet-ready strings (max 8 each). ' +
+	'Output JSON with these keys, in this order: jurisdiction, issues, doctrines, precedents, acts. ' +
+	'jurisdiction is a short string naming the jurisdiction you applied, such as "India". ' +
+	'issues and doctrines must each map to an array of short bullet-ready strings (max 8 each). ' +
+	'precedents must map to an array of up to 8 objects, each shaped like {"case": "Party v. Party", "year": "1987"}; ' +
+	'give the year as four digits only if you are sure of it, otherwise omit it. ' +
 	'acts must map to an array of up to 6 objects, each shaped like ' +
 	'{"act": "Name of the Act, Year", "sections": ["Section 73", "Section 74"], "relevance": "one line on why it applies"}. ' +
 	'Name the most relevant statute for the facts; use the jurisdiction the facts imply (default to Indian law for Indian-style facts). ' +
@@ -38,6 +48,31 @@ function normalizeList(value: unknown): string[] {
 		.map((item) => item.trim())
 		.filter(Boolean)
 		.slice(0, 8);
+}
+
+function normalizePrecedents(value: unknown): Precedent[] {
+	if (!Array.isArray(value)) return [];
+	const precedents: Precedent[] = [];
+	for (const item of value) {
+		if (typeof item === 'string') {
+			const name = item.trim();
+			if (name) precedents.push({ name });
+		} else if (item && typeof item === 'object') {
+			const record = item as Record<string, unknown>;
+			const name = ['case', 'name', 'title']
+				.map((key) => record[key])
+				.find((field): field is string => typeof field === 'string' && field.trim().length > 0);
+			if (!name) continue;
+			const year = String(record.year ?? '').trim();
+			precedents.push(/^\d{4}$/.test(year) ? { name: name.trim(), year } : { name: name.trim() });
+		}
+		if (precedents.length >= 8) break;
+	}
+	return precedents;
+}
+
+function normalizeJurisdiction(value: unknown): string | undefined {
+	return typeof value === 'string' && value.trim() ? value.trim().slice(0, 60) : undefined;
 }
 
 function normalizeSections(value: unknown): string[] {
@@ -343,7 +378,12 @@ async function analyze(
 				const { section, value } = piece.item;
 				if (counts[section] >= MAX_ITEMS[section]) continue;
 
-				const entry = section === 'acts' ? normalizeActs([value])[0] : normalizeList([value])[0];
+				const entry =
+					section === 'acts'
+						? normalizeActs([value])[0]
+						: section === 'precedents'
+							? normalizePrecedents([value])[0]
+							: normalizeList([value])[0];
 				if (!entry) continue;
 
 				counts[section] += 1;
@@ -352,7 +392,7 @@ async function analyze(
 		}
 	);
 
-	let parsed: Partial<SpotterResult>;
+	let parsed: Partial<Record<keyof SpotterResult, unknown>>;
 
 	try {
 		parsed = JSON.parse(content);
@@ -361,9 +401,10 @@ async function analyze(
 	}
 
 	return {
+		jurisdiction: normalizeJurisdiction(parsed.jurisdiction),
 		issues: normalizeList(parsed.issues),
 		doctrines: normalizeList(parsed.doctrines),
-		precedents: normalizeList(parsed.precedents),
+		precedents: normalizePrecedents(parsed.precedents),
 		acts: normalizeActs(parsed.acts)
 	};
 }
@@ -463,7 +504,10 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				}
 
 				send({ stage: 'analyzing' });
-				send({ result: await analyze(fetch, trimmed, upstream.signal, send) });
+				const startedAt = Date.now();
+				const result = await analyze(fetch, trimmed, upstream.signal, send);
+				send({ meta: { model: OPENAI_MODEL, ms: Date.now() - startedAt } });
+				send({ result });
 			} catch (error) {
 				// A cancelled search keeps its count: the provider already did part of the work.
 				if (cancelled) return;

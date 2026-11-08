@@ -24,3 +24,8 @@ vite.config.ts.timestamp-*
 
 # Design
 design/spotter.pen
+
+# Cloudflare
+.wrangler
+.dev.vars
+.dev.vars.*

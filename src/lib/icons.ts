@@ -35,7 +35,8 @@ import {
 	Globe,
 	MapPin,
 	PanelRight,
-	PanelRightClose
+	PanelRightClose,
+	TriangleAlert
 } from '@lucide/svelte';
 
 /** Every icon the UI uses, by the name passed to <Icon>. Add an entry here to use a new one. */
@@ -76,7 +77,8 @@ export const icons = {
 	globe: Globe,
 	mapPin: MapPin,
 	panelRight: PanelRight,
-	panelRightClose: PanelRightClose
+	panelRightClose: PanelRightClose,
+	triangleAlert: TriangleAlert
 } as const;
 
 export type IconName = keyof typeof icons;

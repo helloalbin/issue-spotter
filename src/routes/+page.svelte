@@ -3,6 +3,7 @@
 	import { auth } from '#lib/auth.svelte.js';
 	import AnalysisResult from '#lib/components/AnalysisResult.svelte';
 	import Composer from '#lib/components/Composer.svelte';
+	import ErrorNotice from '#lib/components/ErrorNotice.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Progress from '#lib/components/Progress.svelte';
 	import { SAMPLES } from '#lib/samples.js';
@@ -34,15 +35,6 @@
 </svelte:head>
 
 {#snippet messages()}
-	{#if workspace.errorMessage}
-		<p
-			role="alert"
-			class="type-body rounded-lg border border-danger-border bg-danger-subtle p-3 text-danger"
-		>
-			{workspace.errorMessage}
-		</p>
-	{/if}
-
 	{#if outOfSearches}
 		<p class="type-body rounded-lg border border-border-default bg-surface-2 p-3 text-text-secondary">
 			{#if quota?.signedIn}
@@ -95,6 +87,12 @@
 					<div class="mt-3 space-y-3">{@render messages()}</div>
 				</div>
 
+				{#if workspace.errorMessage}
+					<div class="flex justify-center">
+						<ErrorNotice message={workspace.errorMessage} />
+					</div>
+				{/if}
+
 				<div class="flex flex-wrap items-center justify-center gap-2">
 					<button
 						type="button"
@@ -122,6 +120,11 @@
 {#if workspace.isLoading || workspace.result}
 	<div class="border-t border-border-subtle px-6 py-4">
 		<div class="mx-auto w-full max-w-3xl">
+			{#if workspace.errorMessage}
+				<div class="mb-3 flex justify-center">
+					<ErrorNotice message={workspace.errorMessage} />
+				</div>
+			{/if}
 			<Composer docked {quota} {outOfSearches} />
 			<div class="mt-3 space-y-3">{@render messages()}</div>
 		</div>

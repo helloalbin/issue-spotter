@@ -112,6 +112,16 @@ function normalizeActs(value: unknown): ActReference[] {
 
 class SpotError extends Error {}
 
+/** What went wrong, in a few words, for the development console and error text. Never shown in production. */
+function describeFailure(error: unknown): string {
+	type Cause = { code?: string; message?: string; address?: string; port?: number; errors?: Cause[] };
+	const cause = (error as { cause?: Cause })?.cause;
+	// A failed connect to several addresses arrives as a list; the first is enough to go on.
+	const detail = cause?.errors?.[0] ?? cause;
+	const where = detail?.address ? ` ${detail.address}${detail.port ? `:${detail.port}` : ''}` : '';
+	return `${detail?.code ?? detail?.message ?? (error as Error)?.message ?? 'unknown error'}${where}`;
+}
+
 const TIMEOUT_MESSAGE = 'The model provider took too long to respond. Please try again.';
 
 /**
@@ -184,7 +194,11 @@ async function chatOnce(
 	} catch (error) {
 		if (signal.aborted) throw error;
 		console.error('Model provider request failed:', error, (error as Error)?.cause);
-		throw new SpotError('Unable to reach the model provider.');
+		throw new SpotError(
+			import.meta.env.DEV
+				? `Unable to reach the model provider (${describeFailure(error)}).`
+				: 'Unable to reach the model provider.'
+		);
 	}
 
 	if (!response.ok) {
@@ -263,7 +277,11 @@ async function chatStreamOnce(
 	} catch (error) {
 		if (signal.aborted) throw error;
 		console.error('Model provider request failed:', error, (error as Error)?.cause);
-		throw new SpotError('Unable to reach the model provider.');
+		throw new SpotError(
+			import.meta.env.DEV
+				? `Unable to reach the model provider (${describeFailure(error)}).`
+				: 'Unable to reach the model provider.'
+		);
 	}
 
 	if (!response.ok) {

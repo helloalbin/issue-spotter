@@ -1,5 +1,6 @@
 import { auth } from '#lib/auth.svelte.js';
 import { activityStore } from '#lib/activity.svelte.js';
+import { speech } from '#lib/speech.svelte.js';
 import type { RunKind } from '#lib/activity.js';
 import { gatherSources } from '#lib/gather.js';
 import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
@@ -281,6 +282,7 @@ class Workspace {
 
 	/** Starts over: forgets the conversation. */
 	clearAll() {
+		speech.stop();
 		this.#abort?.abort();
 		this.#run += 1;
 		this.isLoading = false;
@@ -486,6 +488,7 @@ class Workspace {
 	 * earlier exchanges stay.
 	 */
 	editLast() {
+		speech.stop();
 		const last = this.thread.pop();
 		if (!last) return;
 		if (last.kind === 'research') {
@@ -604,6 +607,8 @@ class Workspace {
 
 	async submit() {
 		if (this.isLoading) return;
+		// A new run is starting: whatever was being read is no longer the latest.
+		speech.stop();
 		this.errorMessage = '';
 		this.notice = '';
 		if (this.verifyMode) return this.#verify();

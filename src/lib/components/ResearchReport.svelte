@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { headingOf, renderMarkdown, templateFor } from '#lib/report.js';
 	import type { ReportLine, ResearchBrief } from '#lib/spotter.js';
+	import { reportScript } from '#lib/speech.js';
 	import Icon from './Icon.svelte';
+	import ReadAloud from './ReadAloud.svelte';
 
 	type Props = { brief: ResearchBrief; index: number };
 	let { brief, index }: Props = $props();
@@ -214,4 +216,5 @@
 		<Icon name="fileText" size={14} />
 		Download .md
 	</button>
+	<ReadAloud id="report-{index}" script={() => reportScript(report)} />
 </div>

@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { compareBy } from '#lib/diff.js';
 	import { toMarkdown } from '#lib/markdown.js';
+	import { analysisScript } from '#lib/speech.js';
 	import { caseLink, sectionLink } from '#lib/sources.js';
 	import { caseKey, lookupCount, sectionKey } from '#lib/spotter.js';
 	import type { ActReference, Precedent, SpotterResult } from '#lib/spotter.js';
 	import type { AnalysisExchange } from '#lib/workspace.svelte.js';
 	import AttachedPages from './AttachedPages.svelte';
 	import DraftCard from './DraftCard.svelte';
+	import ReadAloud from './ReadAloud.svelte';
 	import Icon from './Icon.svelte';
 
 	type Props = {
@@ -289,7 +291,7 @@
 	</div>
 
 	{#if result.draft}
-		<DraftCard {result} />
+		<DraftCard {result} id="draft-{index}" />
 	{:else}
 	{#if compare}
 		<header class="mt-8">
@@ -511,14 +513,17 @@
 	</div>
 
 	<div class="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">
-		<button
-			type="button"
-			onclick={() => copy('markdown', toMarkdown(turns, result, sources))}
-			class="flex items-center gap-2 rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition hover:bg-surface-2 hover:text-text-primary"
-		>
-			<Icon name={copied === 'markdown' ? 'check' : 'copy'} size={14} />
-			{copied === 'markdown' ? 'Copied' : 'Copy as Markdown'}
-		</button>
+		<div class="flex flex-wrap items-center gap-2">
+			<button
+				type="button"
+				onclick={() => copy('markdown', toMarkdown(turns, result, sources))}
+				class="flex items-center gap-2 rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition hover:bg-surface-2 hover:text-text-primary"
+			>
+				<Icon name={copied === 'markdown' ? 'check' : 'copy'} size={14} />
+				{copied === 'markdown' ? 'Copied' : 'Copy as Markdown'}
+			</button>
+			<ReadAloud id="analysis-{index}" script={() => analysisScript(result)} />
+		</div>
 		<p class="text-right text-caption text-text-tertiary">
 			Model output can be incomplete or out of date. Verify before citing.
 		</p>

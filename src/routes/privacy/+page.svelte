@@ -63,6 +63,14 @@
 		not stored by us. Copying or downloading it happens in your browser.
 	</p>
 
+	<h2>Reading results aloud</h2>
+	<p>
+		"Read aloud" uses the speech engine built into your browser, so the text is spoken on your
+		device and is not sent to us. We choose a voice that runs on your device where there is one. Some
+		browsers also offer online voices; if you choose one, your browser's vendor may receive the text
+		being read. Your chosen speed is saved in this browser.
+	</p>
+
 	<h2>Your activity numbers</h2>
 	<p>
 		The profile page shows counts such as analyses run, issues spotted and your streaks. They are

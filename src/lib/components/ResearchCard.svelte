@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { ResearchExchange } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
+	import { briefScript } from '#lib/speech.js';
+	import ReadAloud from './ReadAloud.svelte';
 	import ResearchReport from './ResearchReport.svelte';
 	import ResearchSources from './ResearchSources.svelte';
 
@@ -72,6 +74,9 @@
 			The cited pages could not be written up, so this is the first search brief. Its statements
 			were not checked against the pages.
 		</p>
+		<div class="mt-4 flex items-center gap-2">
+			<ReadAloud id="brief-{index}" script={() => briefScript(brief)} />
+		</div>
 	<section class="mt-6" aria-label="Research brief">
 		<p class="type-meta tracking-widest text-accent-text">
 			RESEARCH BRIEF · {brief.sources.length}

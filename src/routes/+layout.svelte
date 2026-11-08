@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { auth } from '#lib/auth.svelte.js';
+	import { speech } from '#lib/speech.svelte.js';
 	import Icon from '#lib/components/Icon.svelte';
 	import Inspector from '#lib/components/Inspector.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
@@ -17,6 +18,7 @@
 
 	onMount(() => {
 		auth.init();
+		speech.init();
 
 		// The verification pane starts open on wide screens unless the user closed it.
 		let saved: string | null = null;
@@ -34,10 +36,11 @@
 		if (auth.changes > 0) untrack(() => workspace.refreshQuota());
 	});
 
-	// The drawer closes whenever the page changes.
+	// The drawer closes whenever the page changes, and so does anything being read aloud.
 	$effect(() => {
 		page.url.pathname;
 		menuOpen = false;
+		untrack(() => speech.stop());
 	});
 
 	function newAnalysis() {

@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { draftToText, gapCount, splitGaps } from '#lib/draft.js';
 	import type { SpotterResult } from '#lib/spotter.js';
+	import { draftScript } from '#lib/speech.js';
 	import Icon from './Icon.svelte';
+	import ReadAloud from './ReadAloud.svelte';
 
-	type Props = { result: SpotterResult };
-	let { result }: Props = $props();
+	type Props = { result: SpotterResult; id: string };
+	let { result, id }: Props = $props();
 
 	let blocks = $derived(result.draft ?? []);
 	let gaps = $derived(gapCount(blocks));
@@ -117,6 +119,7 @@
 			<Icon name="fileText" size={14} />
 			Download .txt
 		</button>
+		<ReadAloud {id} script={() => draftScript(result)} />
 	</div>
 	<p class="max-w-sm text-right text-caption text-text-tertiary">
 		A study draft, not a document ready to file. Have an advocate review it before it is used.

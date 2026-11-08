@@ -12,7 +12,7 @@
 		{ label: 'Appearance', icon: 'sun', href: '/settings/appearance' },
 		{ label: 'Usage', icon: 'gauge', href: '/settings/usage' },
 		{ label: 'Data controls', icon: 'database', href: '/settings/data' },
-		{ label: 'Account', icon: 'circleUser' }
+		{ label: 'Account', icon: 'circleUser', href: '/settings/account' }
 	];
 
 	let query = $state('');

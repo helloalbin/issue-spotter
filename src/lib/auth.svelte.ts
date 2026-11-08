@@ -75,6 +75,27 @@ class AuthStore {
 		if (this.#firebase && this.#auth) await this.#firebase.signOut(this.#auth);
 	}
 
+	/**
+	 * Deletes the Firebase account. Firebase only allows it soon after sign-in, so Google is asked
+	 * again first. Returns an empty string on success, otherwise a message to show.
+	 */
+	async deleteAccount(): Promise<string> {
+		const current = this.#auth?.currentUser;
+		if (!this.#firebase || !current) return 'You are not signed in.';
+		try {
+			await this.#firebase.reauthenticateWithPopup(current, new this.#firebase.GoogleAuthProvider());
+			await this.#firebase.deleteUser(current);
+			return '';
+		} catch (error) {
+			const code = (error as { code?: string }).code;
+			if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+				return 'Your account was not deleted, because the Google confirmation was closed.';
+			}
+			if (code === 'auth/user-mismatch') return 'Confirm with the same Google account you are signed in with.';
+			return 'Your account could not be deleted. Please try again.';
+		}
+	}
+
 	openDialog() {
 		this.error = '';
 		this.dialogOpen = true;

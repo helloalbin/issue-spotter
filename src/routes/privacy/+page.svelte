@@ -198,15 +198,17 @@
 	<h2>How long we keep it</h2>
 	<p>
 		Search counters are small records tied to a random ID, an account ID or a hashed IP address. We
-		keep them so the daily limits work, and we do not yet delete old ones automatically. Your
-		account details stay until you ask us to remove them.
+		keep them so the daily limits work, and we do not yet delete old ones automatically. Deleting
+		your account does not remove them: they hold an account number, not your name or email, and
+		removing them would let anyone reset a limit by deleting and signing up again. Your account
+		details stay until you delete your account under Settings, then Account, or ask us to.
 	</p>
 
 	<h2>Your choices</h2>
 	<p>
 		You can use {SITE_NAME} without signing in, sign out at any time, and clear your cookies and
-		local storage in your browser. To ask what we hold about you, to correct it, or to delete your
-		account data, email <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a>.
+		local storage in your browser. You can delete your account yourself under Settings, then Account.
+		To ask what we hold about you or to correct it, email <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a>.
 	</p>
 
 	<h2>Who this is for</h2>

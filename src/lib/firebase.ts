@@ -1,7 +1,14 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { type Auth, connectAuthEmulator, getAuth } from 'firebase/auth';
 
-export { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+export {
+	deleteUser,
+	GoogleAuthProvider,
+	onAuthStateChanged,
+	reauthenticateWithPopup,
+	signInWithPopup,
+	signOut
+} from 'firebase/auth';
 
 export type FirebaseConfig = {
 	apiKey: string;

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { actLink, caseLink } from '#lib/sources.js';
+	import { actKey, caseKey, lookupCount } from '#lib/spotter.js';
 	import { workspace } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
 
@@ -21,19 +22,30 @@
 	let sources = $derived(
 		result
 			? [
-					...result.precedents.map((precedent) => ({
-						name: precedent.name,
-						kind: 'Case' as const,
-						link: caseLink(precedent, result.jurisdiction)
-					})),
-					...result.acts.map((entry) => ({
-						name: entry.act,
-						kind: 'Statute' as const,
-						link: actLink(entry.act, result.jurisdiction)
-					}))
+					...result.precedents.map((precedent, index) => {
+						const match = workspace.sources[caseKey(index)];
+						return {
+							name: precedent.name,
+							kind: 'Case' as const,
+							match,
+							link: match ? { href: match.url, host: match.host, name: match.host } : caseLink(precedent, result.jurisdiction)
+						};
+					}),
+					...result.acts.map((entry, index) => {
+						const match = workspace.sources[actKey(index)];
+						return {
+							name: entry.act,
+							kind: 'Statute' as const,
+							match,
+							link: match ? { href: match.url, host: match.host, name: match.host } : actLink(entry.act, result.jurisdiction)
+						};
+					})
 				]
 			: []
 	);
+
+	// Section links verified on their own count too, so the total is every verified reference.
+	let verified = $derived(Object.keys(workspace.sources).length);
 
 	let hosts = $derived([...new Set(sources.map((source) => source.link.host))]);
 </script>
@@ -95,9 +107,17 @@
 	<section class="flex flex-col gap-2.5">
 		<div class="flex items-center justify-between">
 			<h3 class="font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">SOURCES</h3>
-			<span class="text-[11px] text-text-tertiary">
-				{sources.length}
-				{sources.length === 1 ? 'reference' : 'references'}
+			<span class="flex items-center gap-1.5 text-[11px] text-text-tertiary">
+				{#if workspace.verification === 'running'}
+					<Icon name="loader" size={11} class="spin" />
+					Verifying…
+				{:else if verified > 0}
+					<Icon name="badgeCheck" size={11} class="text-accent-text" />
+					{verified} of {result ? lookupCount(result) : 0} verified
+				{:else}
+					{sources.length}
+					{sources.length === 1 ? 'reference' : 'references'}
+				{/if}
 			</span>
 		</div>
 
@@ -113,7 +133,7 @@
 							href={source.link.href}
 							target="_blank"
 							rel="noopener noreferrer"
-							title={source.name}
+							title={source.match ? `${source.name} · Verified: ${source.match.title}` : source.name}
 							class="group flex items-center gap-2.5 rounded-md px-2 py-[7px] hover:bg-surface-2"
 						>
 							<span
@@ -123,16 +143,30 @@
 							</span>
 							<span class="min-w-0 flex-1 truncate text-sm text-text-secondary group-hover:text-text-primary">
 								{source.name}
-								<span class="sr-only">(searches {source.link.name}, opens in a new tab)</span>
+								<span class="sr-only">
+									{source.match
+										? `(verified page on ${source.match.host}, opens in a new tab)`
+										: `(searches ${source.link.name}, opens in a new tab)`}
+								</span>
 							</span>
+							{#if source.match}
+								<Icon name="badgeCheck" size={12} class="shrink-0 text-accent-text" />
+							{/if}
 							<span class="text-[11px] text-text-tertiary">{source.kind}</span>
 						</a>
 					</li>
 				{/each}
 			</ul>
 			<p class="px-0.5 text-[11px] leading-snug text-text-tertiary">
-				These links open a search. A link does not confirm that a case or section exists or says
-				what the analysis claims. Check each one against the judgment or the bare act.
+				{#if verified > 0}
+					A verified link goes to a page a web search returned, on a legal site, whose title matches
+					the reference. That shows the page exists, not that the case says what the analysis
+					claims. The other links open a search.
+				{:else}
+					These links open a search. A link does not confirm that a case or section exists or says
+					what the analysis claims.
+				{/if}
+				Check each one against the judgment or the bare act.
 			</p>
 		{:else}
 			<p class="text-sm text-text-tertiary">No cases or statutes to look up for these facts.</p>

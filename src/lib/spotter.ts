@@ -30,6 +30,26 @@ export type Streamed = {
 	acts: ActReference[];
 };
 
+/** Ids that tie a reference in the result to its verified link. */
+export const caseKey = (index: number) => `case:${index}`;
+export const actKey = (index: number) => `act:${index}`;
+export const sectionKey = (actIndex: number, sectionIndex: number) => `sec:${actIndex}:${sectionIndex}`;
+
+/** Most sections of one act that are looked up, to keep a verification small. */
+export const MAX_SECTIONS_PER_ACT = 3;
+
+/** How many references a verification looks up: every case, every act, and its first few sections. */
+export function lookupCount(result: SpotterResult): number {
+	return (
+		result.precedents.length +
+		result.acts.length +
+		result.acts.reduce((sum, entry) => sum + Math.min(entry.sections.length, MAX_SECTIONS_PER_ACT), 0)
+	);
+}
+
+/** A reference confirmed against a real page: the page was returned by a web search on an allowed site and its title matches. */
+export type SourceMatch = { key: string; url: string; title: string; host: string };
+
 /** What produced the analysis, for the verification pane. */
 export type AnalysisMeta = { model: string; ms: number };
 
@@ -54,9 +74,11 @@ export type SpotEvent =
 	| { quota: QuotaInfo }
 	| { stage: 'verifying' }
 	| { stage: 'analyzing' }
+	| { stage: 'sourcing' }
 	| { item: SpotItem }
 	| { sectionDone: SpotSection }
 	| { meta: AnalysisMeta }
+	| { sources: SourceMatch[] }
 	| { result: SpotterResult }
 	| { notLegal: true }
 	| { error: string };

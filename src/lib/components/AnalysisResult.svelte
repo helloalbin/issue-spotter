@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { toMarkdown } from '#lib/markdown.js';
-	import { actLink, caseLink, sectionLink } from '#lib/sources.js';
+	import { caseLink, sectionLink } from '#lib/sources.js';
+	import { caseKey, lookupCount, sectionKey } from '#lib/spotter.js';
+	import { workspace } from '#lib/workspace.svelte.js';
 	import type { SpotterResult } from '#lib/spotter.js';
 	import Icon from './Icon.svelte';
 
@@ -8,6 +10,7 @@
 	let { facts, result, onEdit }: Props = $props();
 
 	let copied = $state<'facts' | 'markdown' | null>(null);
+	let verifiedCount = $derived(Object.keys(workspace.sources).length);
 
 	const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 	let summary = $derived(
@@ -78,8 +81,16 @@
 		<span
 			class="flex items-center gap-[5px] rounded-pill border border-border-subtle bg-surface-1 px-[9px] py-[3px] text-[11px] text-text-tertiary"
 		>
-			<Icon name="link" size={11} class="text-accent-text" />
-			Search links
+			{#if workspace.verification === 'running'}
+				<Icon name="loader" size={11} class="spin" />
+				Verifying links
+			{:else if verifiedCount > 0}
+				<Icon name="badgeCheck" size={11} class="text-accent-text" />
+				{verifiedCount} of {lookupCount(result)} verified
+			{:else}
+				<Icon name="link" size={11} class="text-accent-text" />
+				Search links
+			{/if}
 		</span>
 	</div>
 
@@ -120,23 +131,31 @@
 			{@render heading('Landmark precedents', result.precedents.length)}
 			{#if result.precedents.length > 0}
 				<ul class="mt-4 grid gap-x-7 gap-y-3.5 sm:grid-cols-2">
-					{#each result.precedents as precedent}
-						{@const link = caseLink(precedent, result.jurisdiction)}
+					{#each result.precedents as precedent, index}
+						{@const search = caseLink(precedent, result.jurisdiction)}
+						{@const match = workspace.sources[caseKey(index)]}
 						<li>
 							<a
-								href={link.href}
+								href={match?.url ?? search.href}
 								target="_blank"
 								rel="noopener noreferrer"
+								title={match ? `Verified: ${match.title}` : undefined}
 								class="group inline-flex items-start gap-1.5 text-body font-medium text-text-primary hover:underline"
 							>
 								<span>
 									{precedent.name}
-									<span class="sr-only">(searches {link.name}, opens in a new tab)</span>
+									<span class="sr-only">
+										{match
+											? `(verified page on ${match.host}, opens in a new tab)`
+											: `(searches ${search.name}, opens in a new tab)`}
+									</span>
 								</span>
 								<Icon
-									name="externalLink"
+									name={match ? 'badgeCheck' : 'externalLink'}
 									size={12}
-									class="mt-1.5 shrink-0 text-text-muted group-hover:text-text-primary"
+									class="mt-1.5 shrink-0 group-hover:text-text-primary {match
+										? 'text-accent-text'
+										: 'text-text-muted'}"
 								/>
 							</a>
 							{#if precedent.year}
@@ -157,26 +176,32 @@
 			</p>
 			{#if result.acts.length > 0}
 				<ul class="mt-4 space-y-3">
-					{#each result.acts as entry}
+					{#each result.acts as entry, actIndex}
 						<li class="rounded-xl border border-border-default bg-surface-1 p-4">
 							<h4 class="type-label">{entry.act}</h4>
 							{#if entry.sections.length > 0}
 								<ul class="mt-2 flex flex-wrap gap-1.5">
-									{#each entry.sections as section}
-										{@const link = sectionLink(entry.act, section, result.jurisdiction)}
+									{#each entry.sections as section, sectionIndex}
+										{@const search = sectionLink(entry.act, section, result.jurisdiction)}
+										{@const match = workspace.sources[sectionKey(actIndex, sectionIndex)]}
 										<li>
 											<a
-												href={link.href}
+												href={match?.url ?? search.href}
 												target="_blank"
 												rel="noopener noreferrer"
+												title={match ? `Verified: ${match.title}` : undefined}
 												class="group inline-flex items-center gap-[5px] rounded-sm border border-border-subtle bg-surface-2 px-[9px] py-[3px] font-mono text-caption text-text-secondary hover:text-text-primary"
 											>
 												{section}
-												<span class="sr-only">(searches {link.name}, opens in a new tab)</span>
+												<span class="sr-only">
+													{match
+														? `(verified page on ${match.host}, opens in a new tab)`
+														: `(searches ${search.name}, opens in a new tab)`}
+												</span>
 												<Icon
-													name="externalLink"
+													name={match ? 'badgeCheck' : 'externalLink'}
 													size={11}
-													class="text-text-muted group-hover:text-text-primary"
+													class="group-hover:text-text-primary {match ? 'text-accent-text' : 'text-text-muted'}"
 												/>
 											</a>
 										</li>
@@ -207,7 +232,7 @@
 	<div class="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">
 		<button
 			type="button"
-			onclick={() => copy('markdown', toMarkdown(facts, result))}
+			onclick={() => copy('markdown', toMarkdown(facts, result, workspace.sources))}
 			class="flex items-center gap-2 rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition hover:bg-surface-2 hover:text-text-primary"
 		>
 			<Icon name={copied === 'markdown' ? 'check' : 'copy'} size={14} />

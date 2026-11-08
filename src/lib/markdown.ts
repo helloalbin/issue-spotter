@@ -1,8 +1,14 @@
 import { actLink, caseLink, sectionLink } from '#lib/sources.js';
-import type { SpotterResult } from '#lib/spotter.js';
+import { caseKey, sectionKey, actKey } from '#lib/spotter.js';
+import type { SourceMatch, SpotterResult } from '#lib/spotter.js';
 
 /** The analysis as Markdown, for the "Copy as Markdown" action. */
-export function toMarkdown(facts: string, result: SpotterResult): string {
+/** Verified links, by reference key, replace the search links where there are any. */
+export function toMarkdown(
+	facts: string,
+	result: SpotterResult,
+	sources: Record<string, SourceMatch> = {}
+): string {
 	const lines: string[] = ['# Issue analysis', '', '## Case facts', '', facts.trim(), ''];
 
 	lines.push('## Primary legal issues', '');
@@ -12,24 +18,31 @@ export function toMarkdown(facts: string, result: SpotterResult): string {
 	result.doctrines.forEach((item) => lines.push(`- ${item}`));
 
 	lines.push('', '## Landmark precedents', '');
-	for (const precedent of result.precedents) {
+	result.precedents.forEach((precedent, index) => {
 		const year = precedent.year ? ` (${precedent.year})` : '';
-		lines.push(`- [${precedent.name}](${caseLink(precedent, result.jurisdiction).href})${year}`);
-	}
+		const href = sources[caseKey(index)]?.url ?? caseLink(precedent, result.jurisdiction).href;
+		lines.push(`- [${precedent.name}](${href})${year}`);
+	});
 
 	lines.push('', '## Applicable acts & sections', '');
-	for (const entry of result.acts) {
+	result.acts.forEach((entry, actIndex) => {
 		const sections = entry.sections
-			.map((section) => `[${section}](${sectionLink(entry.act, section, result.jurisdiction).href})`)
+			.map((section, sectionIndex) => {
+				const href =
+					sources[sectionKey(actIndex, sectionIndex)]?.url ??
+					sectionLink(entry.act, section, result.jurisdiction).href;
+				return `[${section}](${href})`;
+			})
 			.join(', ');
+		const actHref = sources[actKey(actIndex)]?.url ?? actLink(entry.act, result.jurisdiction).href;
 		lines.push(
-			`- **[${entry.act}](${actLink(entry.act, result.jurisdiction).href})**${sections ? ` (${sections})` : ''}${entry.relevance ? `: ${entry.relevance}` : ''}`
+			`- **[${entry.act}](${actHref})**${sections ? ` (${sections})` : ''}${entry.relevance ? `: ${entry.relevance}` : ''}`
 		);
-	}
+	});
 
 	lines.push(
 		'',
-		'_Study aid, not legal advice. Links are searches, not confirmations: verify every citation against primary sources._',
+		'_Study aid, not legal advice. Links are searches unless marked verified, and even a verified page does not confirm what the analysis claims: check every citation against primary sources._',
 		''
 	);
 	return lines.join('\n');

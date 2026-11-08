@@ -45,6 +45,15 @@
 		</li>
 	</ul>
 
+	<h2>Pages you add</h2>
+	<p>
+		When you add a link, our server fetches that one page from Indian Kanoon, India Code or the
+		Supreme Court of India's site and reads its text. We do not store it. It stays in your browser,
+		and it is sent to the AI model provider along with your facts every time the case is analysed,
+		together with any skills you switched on. We count how many pages you add each day so the
+		feature cannot be abused, using the same random ID and hashed IP address as your searches.
+	</p>
+
 	<h2>Checking references</h2>
 	<p>
 		When reference checking is on, the names of the cases, acts and sections in an analysis are sent

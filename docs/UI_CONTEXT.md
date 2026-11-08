@@ -79,7 +79,16 @@ The page is a conversation. With an analysis on screen, the composer adds facts 
 
 ### Add context drawer
 
-`AddContext.svelte` is the design's drawer: Upload files, Add a URL, a Skills grid (Draft, Deep research, Compare cases, Counter-args, Verify cites, Summarize) and an "Or paste a link" field. It opens above the Add button, closes on Escape (focus returns to the button) or a click outside, and sizes itself to the space above the button, scrolling inside if needed. **Every control in it is disabled and labelled "Soon" or "Coming soon"**, because uploads, link fetching and skills have no backend yet. The first two need file parsing and safe server-side fetching; the skills overlap with the Investigative and Research tiers in the roadmap. Wire them one at a time and remove the disabled state as each lands.
+`AddContext.svelte`, from the design: Upload files, Add a URL, a Skills grid and an "Or paste a link" field. It opens above the Add button, closes on Escape (focus returns to the button) or a click outside, and sizes itself to the space above the button, scrolling inside if needed.
+
+- **Add a URL / paste a link** works. The row focuses the field; Enter or Add sends the address to `POST /api/source`, which fetches the page on the server (see CONTEXT.md) and returns its title and text. Only pages on Indian Kanoon, India Code and the Supreme Court site are accepted, and the field says so. Errors show under the field in the danger color ("For now you can add pages from…", a PDF, a missing page, the daily limit). Success closes the drawer and the page appears as a chip.
+- **Skills.** **Summarize** and **Counter-args** are real toggles (`aria-pressed`, the selected style from the design, and "N selected" or "2 available" in the header). A skill stays on until switched off, across messages. The others (Draft, Deep research, Compare cases, Verify cites) are disabled and tagged "Soon".
+- **Upload files** is still disabled and tagged "Soon": it needs browser-side PDF and DOCX extraction.
+- **Chips in the composer.** Active skills and pages attached to the message being written show as chips above the controls, each with an x to turn it off or remove it. A page chip links to the page and says "partial" when only its start is used. Once sent, a message's pages appear as small link chips under its bubble.
+
+**What a skill adds.** Summarize adds a "Case summary" at the top of the analysis (3 to 5 plain-language bullets of the key facts). Counter-args adds "Counter-arguments" at the end: one entry per main issue with the strongest point the other side could make. Progress gains a matching step for each skill ("Summarizing the case", "Preparing counter-arguments"), and the verification pane's search path gains the same rows.
+
+**Attached pages persist for the case.** The server is stateless, so every analysis re-sends the pages attached so far (up to 5, 12,000 characters each and 30,000 together). A page can be removed only while it is still in the draft.
 
 ## Sign-in
 
@@ -93,7 +102,7 @@ Gaps: the quota counter changes are not announced; results do not take focus or 
 
 ## In the design but not built
 
-- **Upload files, Add a URL and Skills** are drawn and disabled (see the drawer above). The "2 selected" skills state is not shown, since none can be selected.
+- **Upload files and four of the six skills** (Draft, Deep research, Compare cases, Verify cites) are drawn and disabled (see the drawer above).
 - **History, saved analyses, sync across devices**, and the "Ask a follow-up" input. The docked composer starts a new analysis.
 
 - **Feedback and share actions** under the results (thumbs up and down, read aloud, the more menu). Thumbs need somewhere to store feedback; read aloud and the menu have no defined behavior yet. Only Copy as Markdown is built.

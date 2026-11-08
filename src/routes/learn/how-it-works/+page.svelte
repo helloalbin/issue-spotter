@@ -44,7 +44,17 @@
 		Each added message counts as one search. To start a different case, use New analysis.
 	</p>
 
-	<h2>5. What to keep in mind</h2>
+	<h2>5. Pages and skills</h2>
+	<p>
+		The + button next to the box opens a drawer. You can paste a link to a case or statute on
+		Indian Kanoon, India Code or the Supreme Court site, and {SITE_NAME} reads the page and uses it
+		as background for your case. Long pages are cut to their first part, and the page says so. Two
+		skills change the analysis: <strong>Summarize</strong> adds a short plain-language summary of
+		the facts, and <strong>Counter-args</strong> adds the strongest point the other side could make
+		on each main issue. A skill stays on until you turn it off with the small x beside the box.
+	</p>
+
+	<h2>6. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case
@@ -59,14 +69,14 @@
 		</li>
 	</ul>
 
-	<h2>6. Daily searches</h2>
+	<h2>7. Daily searches</h2>
 	<p>
 		Each analysis counts as one search. Visitors who are not signed in get a small number a day;
 		signing in with Google raises it. If a search fails on our side, it is given back. The counter
 		resets once a day and the page shows the time in your own time zone.
 	</p>
 
-	<h2>7. Your data</h2>
+	<h2>8. Your data</h2>
 	<p>
 		We do not store your case facts. They are sent to an AI model provider to produce the analysis.
 		See the <a href="/privacy">privacy policy</a> for the details, and avoid entering confidential

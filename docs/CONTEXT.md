@@ -2,7 +2,7 @@
 
 Case Law "Issue Spotter" for law students and junior advocates. The user pastes a raw, unformatted factual summary of a hypothetical case. The app returns the primary legal issues, relevant doctrines, landmark precedents, and applicable statutes (acts and sections). It is a learning aid, not legal advice.
 
-Status: working POC, not yet deployed. Anonymous users get a daily free quota. Sign-in, tiers and credits are decided but not built (see Roadmap).
+Status: working POC, not yet deployed. Anonymous users get a daily free quota, and signed-in users (Google, via Firebase Auth) get a larger per-account quota. Tiers and credits are decided but not built (see Roadmap).
 
 ## Domain language
 
@@ -20,6 +20,8 @@ Use these terms consistently in code, UI copy, prompts and commits.
 | **Verification** | The check that the facts look like a legal fact pattern (keyword heuristic, then a classifier call). |
 | **Quota** | The daily number of free spots for an anonymous visitor. |
 | **Visitor** | An anonymous caller, identified by a random cookie and a hashed IP. |
+| **Signed-in user** | A caller with a verified Firebase ID token, identified by their Firebase uid. |
+| **Subject** | Who a quota is counted for: a visitor's cookie id or a user's uid, plus the hashed IP. |
 | **Tier** (planned) | A signed-in mode: **Investigative** (today's analysis) or **Research** (deeper). |
 | **Credit** (planned) | Prepaid unit for signed-in use, metered from real provider token usage plus a margin. |
 
@@ -28,6 +30,7 @@ Jurisdiction: the system prompt tells the model to infer the jurisdiction from t
 ## Tech stack
 
 - **SvelteKit 3** (`@sveltejs/kit ^3`), **Svelte 5** with runes forced on for all non-`node_modules` files (see `vite.config.ts`).
+- **Firebase Auth** (Google sign-in) in the browser via the `firebase` SDK (pinned to 12.x, since 13.x needs Node 24.12+), and `jose` on the server to verify ID tokens.
 - **Cloudflare Workers** via `@sveltejs/adapter-cloudflare`, configured in `wrangler.jsonc`. **D1** (SQLite) holds quota counters.
 - **Tailwind CSS 4** via `@tailwindcss/vite`. The only stylesheet is `src/routes/layout.css`.
 - **TypeScript 6**, `strict: true`. **Vite 8**.
@@ -39,7 +42,9 @@ Jurisdiction: the system prompt tells the model to infer the jurisdiction from t
 ## Architecture
 
 ```
-Browser (+page.svelte) --POST /api/spot {facts}--> +server.ts
+Browser (+page.svelte) --POST /api/spot {facts}--> hooks.server.ts (visitor cookie, IP hash,
+   [Authorization: Bearer <Firebase ID token>]        verify token -> locals.user)
+                                                  --> +server.ts
                                                      1. validate input
                                                      2. reserve 1 search in D1 (429 if none left)
                                                      3. stream NDJSON events:
@@ -47,7 +52,7 @@ Browser (+page.svelte) --POST /api/spot {facts}--> +server.ts
                                                      4. model calls to {OPENAI_BASE_URL}/chat/completions
 ```
 
-No accounts and nothing user-written is persisted. The only stored data is quota counters (hashed, no facts).
+There is no user table and nothing user-written is persisted. The only stored data is quota counters (hashed IP, cookie id or Firebase uid, no facts).
 
 ### Files
 
@@ -56,7 +61,11 @@ No accounts and nothing user-written is persisted. The only stored data is quota
 | `src/routes/+page.svelte` | The whole UI. Form, quota counter, context tip, staged status, result cards, notices. |
 | `src/routes/+page.server.ts` | Loads the visitor's remaining quota (read only) so the counter renders on first paint. |
 | `src/routes/api/spot/+server.ts` | `POST` handler: validation, quota, classifier, analysis, streaming, usage logging. |
-| `src/hooks.server.ts` | Issues the anonymous cookie, hashes the client IP, exposes `locals.visitor`. Requires `QUOTA_SALT` in production. |
+| `src/hooks.server.ts` | Issues the anonymous cookie, hashes the client IP, verifies a bearer token into `locals.user` (or sets `locals.authFailed`). Requires `QUOTA_SALT` in production. |
+| `src/lib/server/firebase-auth.ts` | Pure token verification: `verifyFirebaseToken` (RS256, issuer, audience, expiry) and the dev-only `verifyEmulatorToken`. |
+| `src/lib/server/identity.ts` | `subjectFor(locals)`: the quota subject (signed-in user or visitor) and its limits. |
+| `src/lib/firebase.ts` | Browser-only Firebase Auth setup. Loaded with a dynamic import, only when Firebase is configured. |
+| `src/routes/api/me/+server.ts` | `GET /api/me`: the current user (or null) and their remaining searches. |
 | `src/lib/spotter.ts` | Shared (client and server): constants, result and event types, the legal-vocabulary heuristic. |
 | `src/lib/server/quota.ts` | D1 quota functions: `reserve`, `release`, `peek`. |
 | `src/env.ts` | Declares env vars and defaults with `defineEnvVars`. |
@@ -69,6 +78,7 @@ No accounts and nothing user-written is persisted. The only stored data is quota
 
 ### Request flow (`/api/spot`)
 
+0. A bearer token that fails verification returns **401** `auth_invalid`. It never falls back to the anonymous quota.
 1. Invalid JSON, facts under 20 trimmed characters, or over 12,000 raw characters return **400**. A missing `OPENAI_API_KEY` returns **500**. A missing D1 binding returns **503**.
 2. **Quota.** `reserve` takes one search from the visitor's counter and the IP counter. Neither has room: **429** with `code: "quota_exceeded"` and the quota.
 3. A stream starts (`application/x-ndjson`). Events (`SpotEvent` in `src/lib/spotter.ts`):
@@ -86,11 +96,19 @@ A vocabulary of about 100 legal terms (prefix or whole-word matches, English). T
 
 ### Quota
 
-- **Identity.** An `anon_id` cookie (random UUID, `httpOnly`, 1 year) plus a SHA-256 of the IP salted with `QUOTA_SALT` (truncated, never stored raw).
-- **Limits.** `ANON_DAILY_LIMIT` per browser (default 5) and `ANON_IP_DAILY_LIMIT` per IP (default 25, so shared networks such as campuses are not blocked by one person).
+- **Subjects.** Anonymous callers are counted under the `search` namespace by cookie id. Signed-in users are counted under `user` by Firebase uid, so their count follows them across browsers and networks. A rejection counter is kept per subject (`reject:search`, `reject:user`).
+- **Anonymous identity.** An `anon_id` cookie (random UUID, `httpOnly`, 1 year) plus a SHA-256 of the IP salted with `QUOTA_SALT` (truncated, never stored raw).
+- **Limits.** Anonymous: `ANON_DAILY_LIMIT` per browser (default 5) and `ANON_IP_DAILY_LIMIT` per IP (default 25, so shared networks such as campuses are not blocked by one person). Signed-in: `SIGNED_IN_DAILY_LIMIT` per account (default 20, a placeholder until credits) and `SIGNED_IN_IP_DAILY_LIMIT` per IP (default 200).
 - **Days are UTC.** The reset is 00:00 UTC (05:30 IST). The UI shows the local time.
 - **Atomic.** One SQL upsert per counter increments only while below the limit (`INSERT ... ON CONFLICT DO UPDATE ... WHERE count < ?`), so parallel requests cannot overshoot. If one counter is full, the other is rolled back.
 - **Known weakness.** Clearing cookies resets the per-browser count. The IP ceiling and the provider spend cap are the real limits. Do not rely on code secrecy.
+
+### Authentication
+
+- **Client.** `firebase/auth` `signInWithPopup` with the Google provider. The page re-reads `/api/me` whenever the auth state changes and sends `Authorization: Bearer <ID token>` on `/api/spot` (the SDK refreshes the token when it expires). Sign-in is hidden unless all four `FIREBASE_*` public values are set.
+- **Server.** The token is verified with `jose` against Google's public keys (`securetoken@system.gserviceaccount.com` JWKS): RS256 only, issuer `https://securetoken.google.com/<project id>`, audience `<project id>`, not expired, with a subject. No Admin SDK and no service-account key, so it runs on Workers. Never commit a service-account file.
+- **Emulator.** In non-production builds with `FIREBASE_AUTH_EMULATOR_URL` set, the server accepts the emulator's unsigned tokens (checking the same claims, but not a signature), and the client connects to the emulator. This is compiled out of production builds (`import.meta.env.PROD`), and a production build was tested to reject emulator tokens.
+- **No fallback.** A token sent while Firebase is unconfigured, or one that fails verification, is a 401. Signed-in users cannot silently drop to the anonymous quota.
 
 ### Token usage
 
@@ -113,6 +131,10 @@ Every model call logs one structured line: `{"event":"llm_usage","call":"classif
 | `ANON_DAILY_LIMIT` | no | 5 | Searches per day per browser. |
 | `ANON_IP_DAILY_LIMIT` | no | 25 | Searches per day per IP. |
 | `QUOTA_REJECTION_MULTIPLIER` | no | 3 | Free non-legal rejections, as a multiple of the limits. |
+| `SIGNED_IN_DAILY_LIMIT` | no | 20 | Searches per day per signed-in account (placeholder until credits). |
+| `SIGNED_IN_IP_DAILY_LIMIT` | no | 200 | Searches per day per IP across signed-in accounts. |
+| `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_APP_ID` | for sign-in | unset (sign-in hidden) | Firebase web config. Public identifiers, not secrets. `FIREBASE_PROJECT_ID` is also the token audience the server checks. |
+| `FIREBASE_AUTH_EMULATOR_URL` | no | unset | Dev only. Local Auth emulator, e.g. `http://127.0.0.1:9099`. Ignored in production builds. |
 | `QUOTA_SALT` | **production** | `dev-salt` in dev only | Salt for hashed IPs. A missing value in production returns 500. |
 | `CLASSIFIER_MAX_TOKENS` | no | 8 | Output cap for the classifier call. |
 | `ANALYSIS_MAX_TOKENS` | no | 2000 | Output cap for the analysis call. |
@@ -123,6 +145,10 @@ Where to set them:
 - Production: the Cloudflare dashboard or `wrangler secret put` (make `QUOTA_SALT` a secret).
 
 `.env`, `.dev.vars` and `.wrangler/` are gitignored. `.env.example` documents everything and holds no values. SvelteKit validates the env schema at **build** time, and Workers builds have no runtime secrets, so the `QUOTA_SALT` check runs per request in `hooks.server.ts` and not in the schema.
+
+The `FIREBASE_*` values are declared `public: true` in `src/env.ts`, so they are served to the browser via `$app/env/public` (no `PUBLIC_` prefix is needed in SvelteKit 3).
+
+Local sign-in without a Firebase project: run the Auth emulator (`npx firebase-tools emulators:start --only auth --project demo-issue-spotter`, needs Java) and set the four `FIREBASE_*` values to any text, `FIREBASE_PROJECT_ID=demo-issue-spotter` and `FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099`.
 
 Bindings are read with `import { env } from 'cloudflare:workers'` (this adapter does not populate `platform` in SvelteKit 3).
 
@@ -160,8 +186,8 @@ Decided, in build order:
 1. Done: Cloudflare adapter, D1, Wrangler config.
 2. Done: token usage logging.
 3. Done: anonymous daily quota (5 per day, no tier features).
-4. Next: **Firebase Auth** (Google sign-in first). Workers cannot run the Firebase Admin SDK, so the server verifies Firebase ID tokens (JWT, Web Crypto). Needs a Firebase project.
-5. **Tiers** for signed-in users, differing by depth of analysis: **Investigative** (current output) and **Research** (deeper: larger output cap, more items, possibly a stronger model). Anonymous users get neither.
+4. Done (built and tested against the emulator): **Firebase Auth** with Google sign-in. Workers cannot run the Firebase Admin SDK, so the server verifies ID tokens itself (JWT, Web Crypto). Still to do: create the real Firebase project and try the real Google popup.
+5. Next: **Tiers** for signed-in users, differing by depth of analysis: **Investigative** (current output) and **Research** (deeper: larger output cap, more items, possibly a stronger model). Anonymous users get neither.
 6. **Credits and payments.** Credits cost the user more than the token cost to the app (margin), metered from `llm_usage`. Sell "analyses", not raw tokens. Stripe or Razorpay, undecided. Ledger in D1, atomic and idempotent, with refunds on failure.
 
 Hosting history: Vercel was considered and dropped. Cloudflare allows commercial use on its free plan, and it covers rate limiting, a store and (later) a bot challenge in one account. Vercel Hobby is non-commercial.
@@ -173,6 +199,8 @@ Cost safeguards: set a hard monthly spend cap in the model provider's billing se
 1. **Hallucinated citations.** Precedents and sections are model output with no verification. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
 2. **No tests.** `quota.ts`, `looksLegal` and the normalizers are pure or small and are the first candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
+3a. **Sign-in is not tried against real Firebase.** It was tested with the Auth emulator and test keys only. The real project (Google provider enabled, web app registered, deployed domain under authorized domains) does not exist yet.
+3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.
 4. **No timeout or retry** on the upstream model `fetch`. A stalled provider leaves the stream open.
 5. **README is stale.** It omits quota, the classifier, `acts`, Cloudflare and the env vars.
 6. **Summary line grammar.** "1 issues" is not singularized (the acts badge is).
@@ -187,5 +215,5 @@ Cost safeguards: set a hard monthly spend cap in the model provider's billing se
 - Keep model-output normalization forgiving. Do not make the endpoint fail on a slightly wrong shape.
 - Keep the "not legal advice, verify against primary sources" disclaimers.
 - Never truncate or rewrite the user's input.
-- Never commit secrets, `.env`, `.dev.vars`, service-account files or `design/`.
+- Never commit secrets, `.env`, `.dev.vars`, service-account files or `design/`. Firebase web config is public by design; a service-account JSON is not.
 - Run `npm run check` before committing. For UI changes, look at the page in a browser. `curl` tests do not catch missing markup.

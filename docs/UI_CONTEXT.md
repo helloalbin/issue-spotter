@@ -31,7 +31,7 @@ No dark mode. No design tokens or CSS variables.
 ```
 main.min-h-screen  (px-4 py-10, stone-200/60)
 └─ div.max-w-6xl.mx-auto
-   ├─ header             dark hero card
+   ├─ header             dark hero card (badge, and Sign in / account + Sign out on the right)
    ├─ input card
    │   ├─ form           label + char counter, textarea, context tip,
    │   │                 actions row (3 buttons + quota counter)
@@ -51,7 +51,11 @@ Breakpoints in use: `sm` (wider padding on the header and input card), `md` (3-c
 
 ### Header (hero)
 - `bg-stone-900` card with a pill badge: "For law students · learning aid, not legal advice".
-- H1 "Case Law Issue Spotter" and a short description (`max-w-2xl text-sm`). Static.
+- H1 "Case Law Issue Spotter" and a short description (`max-w-2xl text-sm`).
+- **Auth control** (top right of the header, small outlined buttons on the dark card), shown only when all four `FIREBASE_*` values are set:
+  - Signed out: **Sign in with Google** (disabled until the Firebase SDK has loaded; shows "Signing in…" during the popup). Closing the popup is not an error.
+  - Signed in: the account name (or email) and **Sign out**.
+  - Failures other than a closed popup show "Sign-in failed. Please try again." in the error banner.
 
 ### Input card
 - **Label and counter.** "Case facts" label tied to the textarea via `for="facts"`. The counter shows `n / 12,000` and turns red over the limit. It counts raw length. The server requires 20 or more trimmed characters.
@@ -61,9 +65,9 @@ Breakpoints in use: `sm` (wider padding on the header and input card), `md` (3-c
   - **Spot issues** is the primary action. The label becomes "Analyzing…" while loading. It is disabled while loading, over the limit, or out of searches.
   - **Use sample facts** (secondary) fills the textarea with a landlord/tenant scenario and clears the error and notice. It does not clear results.
   - **Clear** (ghost) resets facts, error, notice and results.
-  - **Quota counter** is pushed to the right (`ml-auto`, `text-xs`): "N of M free searches left today". It renders on first paint from the page load and updates from the stream.
+  - **Quota counter** is pushed to the right (`ml-auto`, `text-xs`): "N of M free searches left today" for anonymous visitors and "N of M searches left today" when signed in. It renders on first paint from the page load (anonymous), then updates from `/api/me` on every auth change and from the stream.
 - **Error banner** (`role="alert"`): validation errors, server error messages and network failures. Only the message is shown; any server `details` are never displayed.
-- **Out-of-searches notice** (neutral box), shown when quota is 0: "You have used today's M free searches. They reset at {local time}. Your text is kept, and more access is coming soon." The local time appears only after the page mounts (it reads "later today" before), to avoid a server/client time zone mismatch.
+- **Out-of-searches notice** (neutral box), shown when quota is 0. Signed in: "You have used today's M searches. They reset at {local time}. Your text is kept, and credits are coming soon." Anonymous with sign-in available: "...free searches... Sign in with Google for more. Your text is kept." Anonymous without sign-in: "...Your text is kept, and more access is coming soon." The local time appears only after the page mounts (it reads "later today" before), to avoid a server/client time zone mismatch.
 - **Status region** (`role="status"`, `aria-live="polite"`): holds the stage text and the not-legal notice.
   - Stage text: "Checking that this is a legal fact pattern…" then "Spotting issues, doctrines, precedents and acts…". The first stage is skipped when the heuristic already shows clear legal context.
   - Not-legal notice (neutral box): "This doesn't look like a legal fact pattern. Update the facts and try again."
@@ -108,10 +112,15 @@ State is local to the page (Svelte 5 runes):
 | `liveQuota` | Latest quota from the stream. The displayed `quota` is `liveQuota ?? data.quota` |
 | `mounted` | True after mount. Gates the local reset time |
 | `result` | Last successful response, or `null` |
+| `user` | Signed-in account name and email, or `null` |
+| `authReady` | True once the Firebase SDK has loaded (enables the sign-in button) |
+| `signingIn` | True while the Google popup is open |
+
+Auth: the Firebase SDK is loaded with a dynamic import after mount, only when configured. `onAuthStateChanged` updates `user` and re-reads the quota from `/api/me`, signed in or out, so the counter always matches who is acting. Requests to `/api/spot` and `/api/me` carry `Authorization: Bearer <ID token>` when signed in.
 
 Flow on submit: clear error, notice and previous result → validate (min 20 trimmed, max 12,000) → set loading → `POST /api/spot` → read the NDJSON stream line by line → handle each event (`quota`, `stage`, `result`, `notLegal`, `error`) → clear loading and stage.
 
-- A non-OK response is read as JSON. `quota_exceeded` (429) updates the quota and shows the out-of-searches notice, with no red error banner. Other failures use the error banner.
+- A non-OK response is read as JSON. `quota_exceeded` (429) updates the quota and shows the out-of-searches notice, with no red error banner. `auth_invalid` (401) shows the message and signs the user out. Other failures use the error banner.
 - If the stream ends without a result, a not-legal event or an error, the page shows "The analysis ended unexpectedly."
 - Submitting clears the previous result immediately, so the old analysis disappears while the new one loads.
 - There is no cancel, retry button or request abort.
@@ -138,7 +147,7 @@ Gaps:
 ## Not built
 
 These do not exist in the UI today:
-- Sign-in, account state or a sign-in prompt (the out-of-searches notice only says more access is coming).
+- Account page, profile, email or other sign-in methods (only Google).
 - The Investigative and Research tiers, a tier switcher, credits or a balance.
 - A purchase flow.
 - A jurisdiction selector or override (the model infers it).

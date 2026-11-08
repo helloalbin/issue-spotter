@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { auth } from '#lib/auth.svelte.js';
+	import { dialogs } from '#lib/dialogs.svelte.js';
 	import type { IconName } from '#lib/icons.js';
 	import { portal } from '#lib/portal.js';
 	import { CONTACT_EMAIL } from '#lib/site.js';
@@ -24,19 +25,30 @@
 	let place = $state({ left: 0, bottom: 0, width: 248 });
 	let helpPlace = $state({ left: 0, top: 0 });
 
-	/** Account items that are not built yet are shown, so the menu matches the design, but cannot be used. */
-	const account: { label: string; icon: IconName; href?: string }[] = [
-		{ label: 'Upgrade plan', icon: 'sparkles' },
+	/** An item with an `action` opens a dialog instead of going to a page. */
+	const account: { label: string; icon: IconName; href?: string; action?: 'plans' }[] = [
+		{ label: 'Upgrade plan', icon: 'sparkles', action: 'plans' },
 		{ label: 'Profile', icon: 'circleUser', href: '/profile' },
 		{ label: 'Settings', icon: 'settings', href: '/settings' }
 	];
 
-	const help: { label: string; icon: IconName; href: string }[] = [
+	const help: { label: string; icon: IconName; href: string; action?: 'contact' }[] = [
 		{ label: 'FAQs', icon: 'info', href: '/learn/how-it-works' },
 		{ label: 'Privacy Policy', icon: 'lock', href: '/privacy' },
 		{ label: 'Terms of Service', icon: 'fileText', href: '/terms' },
-		{ label: 'Contact Us', icon: 'mail', href: `mailto:${CONTACT_EMAIL}` }
+		{ label: 'Contact Us', icon: 'mail', href: `mailto:${CONTACT_EMAIL}`, action: 'contact' }
 	];
+
+	/** Opens a dialog instead of following the link, then closes the menu. */
+	function act(event: Event, action: 'plans' | 'contact' | undefined) {
+		if (!action) return false;
+		event.preventDefault();
+		close();
+		onNavigate?.();
+		if (action === 'plans') dialogs.openPlans();
+		else dialogs.openContact();
+		return true;
+	}
 
 	/** The menu sits directly above the account row, as wide as it is. */
 	function position() {
@@ -165,10 +177,9 @@
 					<span class="flex-1">{entry.label}</span>
 				</a>
 			{:else}
-				<button type="button" role="menuitem" aria-disabled="true" title="Coming soon" onmouseenter={() => (helpOpen = false)} class="{itemClass} cursor-not-allowed opacity-60 hover:bg-transparent hover:text-text-secondary">
+				<button type="button" role="menuitem" onclick={(event) => act(event, entry.action)} onmouseenter={() => (helpOpen = false)} class={itemClass}>
 					<Icon name={entry.icon} size={17} class="text-text-tertiary" />
 					<span class="flex-1">{entry.label}</span>
-					<span class="text-[10px] text-text-tertiary">Soon</span>
 				</button>
 			{/if}
 		{/each}
@@ -191,7 +202,7 @@
 		{#if helpOpen && !wide}
 			<div role="menu" aria-label="Help" id="help-submenu" class="flex flex-col gap-0.5 pl-3">
 				{#each help as entry}
-					<a href={entry.href} role="menuitem" onclick={() => (close(), onNavigate?.())} class={itemClass}>
+					<a href={entry.href} role="menuitem" onclick={(event) => act(event, entry.action) || (close(), onNavigate?.())} class={itemClass}>
 						<Icon name={entry.icon} size={16} class="text-text-tertiary" />
 						{entry.label}
 					</a>
@@ -225,7 +236,7 @@
 			class="fixed w-53 {panelClass}"
 		>
 			{#each help as entry}
-				<a href={entry.href} role="menuitem" onclick={() => (close(), onNavigate?.())} class={itemClass}>
+				<a href={entry.href} role="menuitem" onclick={(event) => act(event, entry.action) || (close(), onNavigate?.())} class={itemClass}>
 					<Icon name={entry.icon} size={16} class="text-text-tertiary" />
 					{entry.label}
 				</a>

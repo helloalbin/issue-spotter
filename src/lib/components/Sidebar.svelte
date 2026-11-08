@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { auth } from '#lib/auth.svelte.js';
+	import { dialogs } from '#lib/dialogs.svelte.js';
 	import { CONTACT_EMAIL, SITE_NAME } from '#lib/site.js';
 	import type { IconName } from '#lib/icons.js';
 	import AccountMenu from './AccountMenu.svelte';
@@ -99,6 +100,7 @@
 				{/each}
 				<a
 					href="mailto:{CONTACT_EMAIL}"
+					onclick={(event) => (event.preventDefault(), dialogs.openContact(), onClose?.())}
 					class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-body text-text-secondary transition hover:bg-surface-1 hover:text-text-primary"
 				>
 					<Icon name="mail" size={18} class="text-text-tertiary" />

@@ -7,8 +7,10 @@
 	import { speech } from '#lib/speech.svelte.js';
 	import { theme } from '#lib/theme.svelte.js';
 	import Icon from '#lib/components/Icon.svelte';
+	import ContactDialog from '#lib/components/ContactDialog.svelte';
 	import Inspector from '#lib/components/Inspector.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
+	import PlansDialog from '#lib/components/PlansDialog.svelte';
 	import SignInDialog from '#lib/components/SignInDialog.svelte';
 	import ThemeToggle from '#lib/components/ThemeToggle.svelte';
 	import { WIDE_SCREEN, workspace } from '#lib/workspace.svelte.js';
@@ -107,3 +109,5 @@
 </div>
 
 <SignInDialog />
+<PlansDialog />
+<ContactDialog />

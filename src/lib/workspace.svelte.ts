@@ -15,57 +15,64 @@ import type {
 /** The width at which the verification pane sits beside the results instead of over them. */
 export const WIDE_SCREEN = '(min-width: 1024px)';
 
+/** One message the user sent and the analysis it produced. */
+export type Exchange = {
+	/** What the user typed, exactly. */
+	added: string;
+	/** The analysis of the whole case up to and including this message. */
+	result: SpotterResult;
+	meta: AnalysisMeta | null;
+	/** Verified links by reference key, filled in after the result when verification is on. */
+	sources: Record<string, SourceMatch>;
+	/** Whether this analysis's references are being checked against real pages. */
+	verification: 'idle' | 'running' | 'done';
+};
+
 /**
- * The analysis in progress. It lives outside any page so that opening a Learn page and coming back
- * keeps the facts and the result.
+ * The conversation. It lives outside any page so that opening a Learn page and coming back keeps
+ * it. Each message the user adds is analysed together with everything before it, and its analysis
+ * is appended below the earlier ones, which stay where they are.
  */
 class Workspace {
+	/** The draft: what is about to be sent. */
 	facts = $state('');
-	/**
-	 * The case so far: the first message and each follow-up, as typed. The composer holds only what
-	 * is about to be added, and is emptied once a result arrives.
-	 */
-	turns = $state<string[]>([]);
+	/** Every message sent so far, each with its analysis, oldest first. */
+	thread = $state<Exchange[]>([]);
+	/** The message being analysed right now, shown as a bubble once there is a conversation. */
+	pending = $state<string | null>(null);
 	isLoading = $state(false);
 	errorMessage = $state('');
 	notice = $state('');
 	stage = $state<'verifying' | 'analyzing' | null>(null);
-	result = $state<SpotterResult | null>(null);
 	/** Live updates from the stream win over the value loaded with the page. */
 	liveQuota = $state<QuotaInfo | null>(null);
 	/** Entries found so far while the analysis is still being written, by section. */
 	streamed = $state<Streamed>({ issues: [], doctrines: [], precedents: [], acts: [] });
-	/** The model and time behind the result on screen. */
-	meta = $state<AnalysisMeta | null>(null);
-	/** Verified links by reference key, filled in after the result when verification is on. */
-	sources = $state<Record<string, SourceMatch>>({});
-	/** Whether the references are being checked against real pages. */
-	verification = $state<'idle' | 'running' | 'done'>('idle');
-	/** The verification pane beside the results. */
-	paneOpen = $state(true);
 	/** Sections the model has finished writing. */
 	closed = $state<SpotSection[]>([]);
+	/** The verification pane beside the results. */
+	paneOpen = $state(true);
+
+	/** The most recent analysis, which the verification pane describes. */
+	latest = $derived(this.thread.at(-1) ?? null);
+	/** Whether the next message adds to a conversation instead of starting one. */
+	followUp = $derived(this.thread.length > 0);
+	/** The messages of the case so far. */
+	turns = $derived(this.thread.map((exchange) => exchange.added));
 
 	/** The whole case, which is what the limit applies to, not just the draft. */
-	charCount = $derived(caseText(this.result ? this.turns : [], this.facts).length);
+	charCount = $derived(caseText(this.turns, this.facts).length);
 	overLimit = $derived(this.charCount > MAX_FACTS);
 	showContextTip = $derived(
-		this.facts.trim().length >= 40 && !looksLegal(caseText(this.result ? this.turns : [], this.facts))
+		this.facts.trim().length >= 40 && !looksLegal(caseText(this.turns, this.facts))
 	);
 
 	#sampleIndex = 0;
 	#abort: AbortController | null = null;
 	/** Tells one search from the next, so a stopped search cannot touch the state of a newer one. */
 	#run = 0;
-	/** What was on screen before a follow-up started, so a failed one can put it back. */
-	#previous: {
-		result: SpotterResult;
-		meta: AnalysisMeta | null;
-		sources: Record<string, SourceMatch>;
-		verification: 'idle' | 'running' | 'done';
-	} | null = null;
-	/** The message being sent, committed to the case only when its analysis arrives. */
-	#pending = { added: '', followUp: false };
+	/** The model and time reported for the analysis being written, attached when it completes. */
+	#meta: AnalysisMeta | null = null;
 
 	/** Re-reads the remaining searches for whoever is signed in (or the anonymous visitor). */
 	async refreshQuota() {
@@ -89,77 +96,79 @@ class Workspace {
 		this.#sampleIndex += 1;
 	}
 
-	/** Empties what is about to be sent. The case already analysed is untouched. */
+	/** Empties what is about to be sent. The conversation is untouched. */
 	clearDraft() {
 		this.facts = '';
 		this.errorMessage = '';
 		this.notice = '';
 	}
 
-	/** Starts over: forgets the case and its result. */
+	/** Starts over: forgets the conversation. */
 	clearAll() {
 		this.#abort?.abort();
 		this.#run += 1;
 		this.isLoading = false;
 		this.stage = null;
-		this.sources = {};
-		this.verification = 'idle';
+		this.pending = null;
 		this.facts = '';
 		this.errorMessage = '';
 		this.notice = '';
-		this.result = null;
-		this.turns = [];
-		this.#previous = null;
+		this.thread = [];
 	}
 
-	/** Puts the whole case back in the composer to edit it, as one piece of text. */
-	editFacts() {
-		this.facts = this.turns.join('\n\n');
-		this.turns = [];
-		this.result = null;
-		this.meta = null;
-		this.sources = {};
-		this.verification = 'idle';
+	/**
+	 * Takes the last message back into the composer to rewrite it. Its analysis goes with it; the
+	 * earlier exchanges stay.
+	 */
+	editLast() {
+		const last = this.thread.pop();
+		if (!last) return;
+		this.facts = last.added;
+		this.errorMessage = '';
+		this.notice = '';
 	}
 
-	#restorePrevious() {
-		if (!this.#previous) return;
-		this.result = this.#previous.result;
-		this.meta = this.#previous.meta;
-		this.sources = this.#previous.sources;
-		this.verification = this.#previous.verification === 'running' ? 'done' : this.#previous.verification;
-		this.#previous = null;
-	}
-
-	#handleEvent(event: SpotEvent) {
+	#handleEvent(event: SpotEvent, added: string) {
 		if ('quota' in event) {
 			this.liveQuota = event.quota;
 		} else if ('stage' in event) {
-			if (event.stage === 'sourcing') this.verification = 'running';
-			else this.stage = event.stage;
+			if (event.stage === 'sourcing') {
+				const latest = this.thread.at(-1);
+				if (latest) latest.verification = 'running';
+			} else {
+				this.stage = event.stage;
+			}
 		} else if ('sources' in event) {
-			this.sources = Object.fromEntries(event.sources.map((match) => [match.key, match]));
-			this.verification = 'done';
+			const latest = this.thread.at(-1);
+			if (latest) {
+				latest.sources = Object.fromEntries(event.sources.map((match) => [match.key, match]));
+				latest.verification = 'done';
+			}
 		} else if ('item' in event) {
 			if (event.item.section === 'acts') this.streamed.acts.push(event.item.value);
 			else if (event.item.section === 'precedents') this.streamed.precedents.push(event.item.value);
 			else this.streamed[event.item.section].push(event.item.value);
 		} else if ('meta' in event) {
-			this.meta = event.meta;
+			this.#meta = event.meta;
 		} else if ('sectionDone' in event) {
 			if (!this.closed.includes(event.sectionDone)) this.closed.push(event.sectionDone);
 		} else if ('result' in event) {
-			this.turns = this.#pending.followUp ? [...this.turns, this.#pending.added] : [this.#pending.added];
+			this.thread.push({
+				added,
+				meta: this.#meta,
+				sources: {},
+				verification: 'idle',
+				result: {
+					jurisdiction:
+						typeof event.result?.jurisdiction === 'string' ? event.result.jurisdiction : undefined,
+					issues: Array.isArray(event.result?.issues) ? event.result.issues : [],
+					doctrines: Array.isArray(event.result?.doctrines) ? event.result.doctrines : [],
+					precedents: Array.isArray(event.result?.precedents) ? event.result.precedents : [],
+					acts: Array.isArray(event.result?.acts) ? event.result.acts : []
+				}
+			});
 			this.facts = '';
-			this.#previous = null;
-			this.result = {
-				jurisdiction:
-					typeof event.result?.jurisdiction === 'string' ? event.result.jurisdiction : undefined,
-				issues: Array.isArray(event.result?.issues) ? event.result.issues : [],
-				doctrines: Array.isArray(event.result?.doctrines) ? event.result.doctrines : [],
-				precedents: Array.isArray(event.result?.precedents) ? event.result.precedents : [],
-				acts: Array.isArray(event.result?.acts) ? event.result.acts : []
-			};
+			this.pending = null;
 			// The answer is complete. Anything the server sends after it (verified links) fills in
 			// later, so the results are shown now instead of waiting for it.
 			this.isLoading = false;
@@ -192,10 +201,10 @@ class Workspace {
 		this.errorMessage = '';
 		this.notice = '';
 
-		// With a result on screen, what is typed continues that case instead of starting a new one.
+		// With a conversation on screen, what is typed continues that case instead of starting a new one.
 		const added = this.facts;
-		const followUp = this.result !== null && this.turns.length > 0;
-		const text = caseText(followUp ? this.turns : [], added);
+		const followUp = this.followUp;
+		const text = caseText(this.turns, added);
 
 		if (added.trim().length < (followUp ? MIN_FOLLOW_UP : MIN_FACTS)) {
 			this.errorMessage = followUp
@@ -205,27 +214,20 @@ class Workspace {
 		}
 		if (text.length > MAX_FACTS) {
 			this.errorMessage = followUp
-				? `The case and what you added come to more than ${MAX_FACTS.toLocaleString()} characters. Shorten what you added, or edit the case.`
+				? `The case and what you added come to more than ${MAX_FACTS.toLocaleString()} characters. Shorten what you added, or start a new analysis.`
 				: `Please keep the factual summary under ${MAX_FACTS.toLocaleString()} characters.`;
 			return;
 		}
 
-		this.#previous =
-			followUp && this.result
-				? { result: this.result, meta: this.meta, sources: this.sources, verification: this.verification }
-				: null;
-		this.#pending = { added, followUp };
-		this.result = null;
-
 		this.isLoading = true;
+		this.pending = added;
 		this.streamed = { issues: [], doctrines: [], precedents: [], acts: [] };
 		this.closed = [];
-		this.meta = null;
-		this.sources = {};
-		this.verification = 'idle';
+		this.#meta = null;
 		this.#abort?.abort();
 		const run = (this.#run += 1);
 		this.#abort = new AbortController();
+		let answered = false;
 
 		try {
 			const response = await fetch('/api/spot', {
@@ -266,8 +268,9 @@ class Workspace {
 					if (!line.trim()) continue;
 					if (run !== this.#run) return;
 					const parsed: SpotEvent = JSON.parse(line);
-					if ('result' in parsed || 'notLegal' in parsed || 'error' in parsed) finished = true;
-					this.#handleEvent(parsed);
+					if ('result' in parsed) answered = true;
+					if (answered || 'notLegal' in parsed || 'error' in parsed) finished = true;
+					this.#handleEvent(parsed, added);
 				}
 
 				if (done) break;
@@ -280,11 +283,11 @@ class Workspace {
 			if (run !== this.#run) return;
 			if ((error as Error)?.name === 'AbortError') {
 				// Stopping while the answer is still being written. After it, nothing is left to stop.
-				if (!this.result) {
+				if (!answered) {
 					this.notice =
 						'Search stopped. Your text is kept, and the search still counts toward today.';
 				}
-			} else if (!this.result) {
+			} else if (!answered) {
 				this.errorMessage = 'Network error. Please try again.';
 			}
 		} finally {
@@ -292,10 +295,10 @@ class Workspace {
 				this.#abort = null;
 				this.isLoading = false;
 				this.stage = null;
-				// A follow-up that did not produce an answer leaves the previous one in place.
-				if (!this.result) this.#restorePrevious();
+				this.pending = null;
 				// The stream may have ended mid-verification; the search links simply stay.
-				if ((this.verification as string) === 'running') this.verification = 'done';
+				const latest = this.thread.at(-1);
+				if (latest && latest.verification === 'running') latest.verification = 'done';
 			}
 		}
 	}

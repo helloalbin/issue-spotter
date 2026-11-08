@@ -26,6 +26,15 @@
 		responsible for what you do with it.
 	</p>
 
+	<h2>Research briefs are not verified advice</h2>
+	<p>
+		Deep research writes a brief from pages found on court and statute websites and links each
+		statement to the pages it came from. A statement with no page is marked. A link shows where the
+		model found something, not that the page says what the brief claims, and a copy of a judgment
+		on Indian Kanoon is not the court's own text. <strong>Open each source and read the passage
+		before relying on it.</strong> Deep research is limited to a few runs a month.
+	</p>
+
 	<h2>The output can be wrong</h2>
 	<p>
 		The analysis is written by an AI model. It can miss issues, misstate the law, rely on outdated

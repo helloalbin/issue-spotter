@@ -73,7 +73,19 @@
 		in brackets too, so you check them. It is a study draft, not a document ready to file.
 	</p>
 
-	<h2>7. What to keep in mind</h2>
+	<h2>7. Deep research</h2>
+	<p>
+		Once you have an analysis on screen, switch on <strong>Deep research</strong> in the drawer and
+		name a point within your case to look into, such as what the law requires of an arresting
+		officer. {SITE_NAME} searches court and statute sites (the Supreme Court of India, India Code,
+		the e-Gazette and High Court sites, plus Indian Kanoon copies) and writes a short brief. Every
+		statement carries the numbers of the pages it came from, and a statement with no page is marked
+		<em>no source</em>. A topic outside your case is turned away and costs nothing. It is limited to
+		a few runs a month because each one costs far more than a search. Read the pages before you
+		rely on them.
+	</p>
+
+	<h2>8. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case

@@ -63,6 +63,14 @@
 		not stored by us. Copying or downloading it happens in your browser.
 	</p>
 
+	<h2>Deep research</h2>
+	<p>
+		Deep research sends your case and the point you ask about to the AI model provider, which
+		searches court and statute websites (such as the Supreme Court of India and India Code) for
+		pages to cite. The brief is not stored by us; it stays in your browser. We count runs per
+		month, using the same random ID and hashed IP address as your searches.
+	</p>
+
 	<h2>Pages you add</h2>
 	<p>
 		When you add a link, our server fetches that one page from Indian Kanoon, India Code or the

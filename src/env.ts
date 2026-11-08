@@ -84,6 +84,23 @@ export const variables = defineEnvVars({
 		description: 'Longest the whole analysis call may take, even while it keeps streaming.',
 		schema: (value) => positiveInt(value, 90000)
 	},
+	SOURCE_VERIFICATION: {
+		description:
+			'Verify cited references against real pages with a web search after the analysis: off, signed-in (signed-in users only) or all. Each verification costs about a cent.',
+		schema: (value) => (value === 'all' || value === 'signed-in' ? value : 'off')
+	},
+	SOURCE_MODEL: {
+		description: 'Model used for the reference web search. Defaults to OPENAI_MODEL.',
+		schema: (value) => value || undefined
+	},
+	SOURCE_TIMEOUT_MS: {
+		description: 'Longest the reference web search may take. On a timeout the search links stay.',
+		schema: (value) => positiveInt(value, 30000)
+	},
+	SOURCE_MAX_SEARCHES: {
+		description: 'Most web searches one verification may run. Each search is billed.',
+		schema: (value) => positiveInt(value, 6)
+	},
 	OPENAI_MODEL: {
 		description: 'Model name used for issue-spotting analysis.',
 		schema: (value) => value || 'gpt-4o-mini'

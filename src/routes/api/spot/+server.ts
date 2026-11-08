@@ -8,11 +8,13 @@ import {
 	OPENAI_BASE_URL,
 	OPENAI_MODEL,
 	PROVIDER_IDLE_TIMEOUT_MS,
-	QUOTA_REJECTION_MULTIPLIER
+	QUOTA_REJECTION_MULTIPLIER,
+	SOURCE_VERIFICATION
 } from '$app/env/private';
 import { Deadline } from '#lib/server/deadline.js';
 import { subjectFor } from '#lib/server/identity.js';
 import { SectionParser } from '#lib/server/section-stream.js';
+import { verifySources } from '#lib/server/sources.js';
 import { quotaInfo, rejectionSubject, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 import type {
@@ -526,6 +528,15 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				const result = await analyze(fetch, trimmed, upstream.signal, send);
 				send({ meta: { model: OPENAI_MODEL, ms: Date.now() - startedAt } });
 				send({ result });
+
+				// Real links for the references, found after the answer is already on screen. Only for
+				// Indian law (the sites searched are Indian) and only when switched on for this user.
+				const signedIn = subject.ns !== 'search';
+				const indian = !result.jurisdiction || /\bindia/i.test(result.jurisdiction);
+				if (indian && (SOURCE_VERIFICATION === 'all' || (SOURCE_VERIFICATION === 'signed-in' && signedIn))) {
+					send({ stage: 'sourcing' });
+					send({ sources: await verifySources(fetch, result, upstream.signal) });
+				}
 			} catch (error) {
 				// A cancelled search keeps its count: the provider already did part of the work.
 				if (cancelled) return;

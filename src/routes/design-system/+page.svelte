@@ -46,7 +46,7 @@
 	<title>Design system</title>
 </svelte:head>
 
-<main id="main" class="flex-1 overflow-y-auto">
+<main id="main" class="relative flex-1 overflow-y-auto overscroll-contain">
 <div class="mx-auto max-w-5xl space-y-12 px-6 py-12">
 	<header class="flex items-start justify-between gap-6">
 		<div>

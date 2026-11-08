@@ -29,7 +29,11 @@
 	$effect(() => {
 		const count = workspace.thread.length;
 		if (count > seen && count > 1) {
-			tick().then(() => document.getElementById(`exchange-${count - 1}`)?.scrollIntoView({ block: 'start' }));
+			// Scroll the content area itself; scrollIntoView would also move every ancestor.
+			tick().then(() => {
+				const target = document.getElementById(`exchange-${count - 1}`);
+				if (target && mainEl) mainEl.scrollTo({ top: target.offsetTop });
+			});
 		}
 		seen = count;
 	});
@@ -90,7 +94,7 @@
 	</div>
 {/snippet}
 
-<main id="main" bind:this={mainEl} class="flex-1 overflow-y-auto">
+<main id="main" bind:this={mainEl} class="relative flex-1 overflow-y-auto overscroll-contain">
 	{#if workspace.thread.length > 0}
 		{#each workspace.thread as exchange, index (index)}
 			{#if exchange.kind === 'reading'}

@@ -17,7 +17,7 @@
 	<title>{title} · {SITE_NAME}</title>
 </svelte:head>
 
-<main id="main" class="flex-1 overflow-y-auto">
+<main id="main" class="relative flex-1 overflow-y-auto overscroll-contain">
 	<div class="mx-auto w-full max-w-2xl px-6 pt-4 pb-16">
 		<h1 class="type-h1">{title}</h1>
 		{#if updated}

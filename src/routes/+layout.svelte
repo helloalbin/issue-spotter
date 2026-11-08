@@ -54,7 +54,12 @@
 	Skip to content
 </a>
 
-<div class="flex h-dvh overflow-hidden bg-bg">
+<!--
+	The frame is fixed to the window: only the content area scrolls. It is `relative` so that visually
+	hidden text (position: absolute) is clipped here instead of stretching the document and letting
+	the whole page scroll.
+-->
+<div class="relative flex h-dvh overflow-hidden bg-bg">
 	<Sidebar open={menuOpen} onNew={newAnalysis} onClose={() => (menuOpen = false)} />
 
 	<div class="flex min-w-0 flex-1 flex-col">

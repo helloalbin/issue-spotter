@@ -137,6 +137,41 @@ export type ResearchSource = {
 	truncated?: boolean;
 };
 
+/** One statement in a report, with the page it rests on. */
+export type ReportLine = {
+	text: string;
+	cites: number[];
+	/** `inference`: the writer's reasoning about the user's own facts, which no page can confirm. */
+	basis: 'source' | 'inference';
+	check?: ResearchCheck;
+};
+
+export type ReportSection = {
+	/** Which slot of the template this fills. */
+	id: string;
+	heading: string;
+	/** Lines shown as a numbered list. */
+	numbered: boolean;
+	lines: ReportLine[];
+	/** Sub-headings (H3), such as one per case. */
+	children?: { heading: string; lines: ReportLine[] }[];
+	/** Plain notes with no source, such as what could not be confirmed. */
+	notes?: string[];
+};
+
+/**
+ * The standard shape of every Deep research answer (and, later, Compare cases and Verify cites): a
+ * title, then the sections of a fixed template in a fixed order. The model fills the slots and
+ * cannot add or reorder them.
+ */
+export type Report = {
+	kind: 'research';
+	title: string;
+	sections: ReportSection[];
+	/** Statements dropped because the page did not contain the quote that was given for them. */
+	dropped: number;
+};
+
 /** A research brief: what was found, in cited sentences, and the pages it came from. */
 export type ResearchBrief = {
 	topic: string;
@@ -144,6 +179,8 @@ export type ResearchBrief = {
 	sources: ResearchSource[];
 	/** How many web searches the brief took. */
 	searches: number;
+	/** The checked report written from the pages themselves. Absent when that step failed. */
+	report?: Report;
 };
 
 /** What produced the analysis, for the verification pane. */
@@ -216,7 +253,7 @@ export type SpotItem =
 /** Newline-delimited JSON events streamed by POST /api/research. */
 export type ResearchEvent =
 	| { research: QuotaInfo }
-	| { stage: 'checking' | 'searching' | 'reading' }
+	| { stage: 'checking' | 'searching' | 'reading' | 'writing' }
 	| { brief: ResearchBrief }
 	/** The topic is not part of the user's case; nothing was spent. */
 	| { offTopic: string }

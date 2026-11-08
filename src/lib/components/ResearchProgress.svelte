@@ -1,14 +1,15 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 
-	type Stage = 'checking' | 'searching' | 'reading';
+	type Stage = 'checking' | 'searching' | 'reading' | 'writing';
 	type Props = { stage: Stage | null };
 	let { stage }: Props = $props();
 
 	const STEPS: { stage: Stage; label: string }[] = [
 		{ stage: 'checking', label: 'Checking the topic belongs to your case' },
 		{ stage: 'searching', label: 'Searching court and statute sites' },
-		{ stage: 'reading', label: 'Reading the cited pages to check each statement' }
+		{ stage: 'reading', label: 'Opening the cited pages and choosing the relevant passages' },
+		{ stage: 'writing', label: 'Writing the report and checking every quote against its page' }
 	];
 	let current = $derived(STEPS.findIndex((step) => step.stage === stage));
 </script>

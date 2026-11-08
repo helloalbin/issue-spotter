@@ -2,9 +2,12 @@ import { env } from 'cloudflare:workers';
 import {
 	DEEP_RESEARCH_MAX_SEARCHES,
 	DEEP_RESEARCH_MODEL,
+	DEEP_RESEARCH_PDF_MAX_BYTES,
 	DEEP_RESEARCH_READ_CHARS,
+	DEEP_RESEARCH_REASONING_EFFORT,
 	DEEP_RESEARCH_READ_SOURCES,
 	DEEP_RESEARCH_TIMEOUT_MS,
+	DEEP_RESEARCH_WRITE_MAX_TOKENS,
 	OPENAI_API_KEY,
 	OPENAI_BASE_URL,
 	OPENAI_MODEL,
@@ -12,17 +15,10 @@ import {
 	CLASSIFIER_TIMEOUT_MS
 } from '$app/env/private';
 import { Deadline } from '#lib/server/deadline.js';
-import {
-	GROUNDING_INSTRUCTIONS,
-	applyChecks,
-	claimsOf,
-	groundingText,
-	isPdfUrl,
-	parseVerdicts,
-	pickSources
-} from '#lib/server/ground.js';
-import { researchSubjectFor } from '#lib/server/identity.js';
-import { fetchPage } from '#lib/server/page.js';
+import { selectExcerpts } from '#lib/server/excerpt.js';
+import { isPdfUrl, pickSources } from '#lib/server/ground.js';
+import { researchSubjectFor, tierOf, writeModelFor } from '#lib/server/identity.js';
+import { checkUrl, fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import {
 	RELEVANCE_PROMPT,
@@ -33,6 +29,8 @@ import {
 } from '#lib/server/research.js';
 import type { TextPart } from '#lib/server/research.js';
 import { MAX_FACTS } from '#lib/spotter.js';
+import { REPORT_SCHEMA, WRITER_INSTRUCTIONS, buildReport, parseDraft, reportTally, writerInput } from '#lib/server/writer.js';
+import type { SourceText } from '#lib/server/writer.js';
 import type { ResearchBrief, ResearchEvent } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
@@ -58,70 +56,98 @@ async function post(fetchFn: typeof fetch, path: string, body: unknown, signal: 
 /** At most this many PDFs go to the model by address; each is large. */
 const MAX_PDFS = 2;
 
+/** Reasoning models take a reasoning effort; the others reject the field. */
+const isReasoningModel = (model: string) => /^(gpt-5|o\d)/.test(model);
+
+/** The size of a PDF in bytes, or null when the site does not say. */
+async function pdfSize(fetchFn: typeof fetch, url: string, signal: AbortSignal): Promise<number | null> {
+	const check = checkUrl(url, RESEARCH_DOMAINS, { allowLocal: import.meta.env.DEV });
+	if (!check.ok) return null;
+	try {
+		const head = await fetchFn(check.url, { method: 'HEAD', signal, redirect: 'follow' });
+		const length = Number(head.headers.get('content-length'));
+		return head.ok && Number.isFinite(length) && length > 0 ? length : null;
+	} catch {
+		return null;
+	}
+}
+
 /**
- * Reads the pages the brief cites and checks each cited sentence against them. An HTML page is
- * fetched here, so the quote the model gives can be looked for in the text. A PDF is handed to the
- * model by address, and its quote cannot be checked here, which the label says. Any failure leaves
- * the brief as it was: a brief that was not checked is still a brief.
+ * Writes the report from the pages themselves. The cited pages are fetched here; a long judgment is
+ * cut down to its most relevant paragraphs, not at its end. A PDF is handed to the writer by address
+ * when it is small enough. The writer returns statements with quotes, and every quote is looked for
+ * in the page, so a statement the page does not contain never reaches the report. Any failure leaves
+ * the first brief as it was: a brief that was not written up is still a brief.
  */
-async function checkAgainstSources(
+async function writeReport(
 	fetchFn: typeof fetch,
 	brief: ResearchBrief,
+	facts: string,
+	topic: string,
 	model: string,
-	signal: AbortSignal
+	signal: AbortSignal,
+	stage: (stage: 'reading' | 'writing') => void
 ): Promise<ResearchBrief> {
 	const picked = pickSources(brief, DEEP_RESEARCH_READ_SOURCES);
 	if (picked.length === 0) return brief;
+	stage('reading');
+
+	const leads = brief.blocks
+		.flatMap((block) => (block.kind === 'paragraph' ? block.sentences.map((sentence) => sentence.text) : []))
+		.join(' ')
+		.slice(0, 3000);
+	const query = `${topic} ${leads}`;
 
 	const pages = new Map<number, string>();
-	const truncated = new Map<number, boolean>();
+	const cut = new Map<number, boolean>();
+	const texts: SourceText[] = [];
 	const pdfs: typeof picked = [];
-	const texts: { n: number; host: string; text: string; truncated: boolean }[] = [];
 
 	await Promise.all(
 		picked.map(async (source) => {
 			if (isPdfUrl(source.url)) {
-				if (pdfs.length < MAX_PDFS) pdfs.push(source);
+				const size = await pdfSize(fetchFn, source.url, signal);
+				if (size !== null && size <= DEEP_RESEARCH_PDF_MAX_BYTES && pdfs.length < MAX_PDFS) pdfs.push(source);
 				return;
 			}
 			try {
 				const page = await fetchPage(fetchFn, source.url, {
 					domains: RESEARCH_DOMAINS,
-					maxChars: DEEP_RESEARCH_READ_CHARS,
+					maxChars: 5_000_000,
 					signal,
 					allowLocal: import.meta.env.DEV
 				});
+				const excerpt = selectExcerpts(page.text, query, DEEP_RESEARCH_READ_CHARS);
 				pages.set(source.n, page.text);
-				truncated.set(source.n, page.truncated);
-				texts.push({ n: source.n, host: source.host, text: page.text, truncated: page.truncated });
+				cut.set(source.n, excerpt.cut);
+				texts.push({ n: source.n, host: source.host, title: source.title, text: excerpt.text, cut: excerpt.cut });
 			} catch {
-				// A page that cannot be read is simply not checked.
+				// A page that cannot be read is simply not used.
 			}
 		})
 	);
 	if (texts.length === 0 && pdfs.length === 0) return brief;
 	texts.sort((a, b) => a.n - b.n);
 
-	const readable = new Set([...texts.map((t) => t.n), ...pdfs.map((p) => p.n)]);
-	const claims = claimsOf(brief).filter((claim) => claim.cites.some((n) => readable.has(n)));
-	if (claims.length === 0) return brief;
-	const prompt = groundingText(claims, texts);
-
-	const ask = async (withPdfs: typeof pdfs) => {
+	stage('writing');
+	const input = writerInput(facts, topic, leads, texts);
+	const ask = (withPdfs: typeof pdfs) => {
 		const content: unknown[] = [];
 		for (const pdf of withPdfs) {
-			content.push({ type: 'input_text', text: `The next file is SOURCE [${pdf.n}] (${pdf.host}).` });
+			content.push({ type: 'input_text', text: `The next file is SOURCE [${pdf.n}] ${pdf.title} (${pdf.host}).` });
 			content.push({ type: 'input_file', file_url: pdf.url });
 		}
-		content.push({ type: 'input_text', text: prompt });
+		content.push({ type: 'input_text', text: input });
 		return post(
 			fetchFn,
 			'/responses',
 			{
 				model,
-				instructions: GROUNDING_INSTRUCTIONS,
+				instructions: WRITER_INSTRUCTIONS,
 				input: [{ role: 'user', content }],
-				max_output_tokens: 2500
+				text: { format: { type: 'json_schema', name: 'research_report', strict: true, schema: REPORT_SCHEMA } },
+				max_output_tokens: DEEP_RESEARCH_WRITE_MAX_TOKENS,
+				...(isReasoningModel(model) && { reasoning: { effort: DEEP_RESEARCH_REASONING_EFFORT } })
 			},
 			signal
 		);
@@ -130,13 +156,13 @@ async function checkAgainstSources(
 	let response = await ask(pdfs);
 	let usedPdfs = pdfs;
 	if (!response.ok && pdfs.length > 0) {
-		// A PDF the provider could not download should not cost the checks on the pages we hold.
-		console.error(`Reading PDFs failed (${response.status}); checking pages only.`);
+		// A PDF the provider could not download should not cost the report from the pages we hold.
+		console.error(`Reading PDFs failed (${response.status}); writing from pages only.`);
 		usedPdfs = [];
 		response = await ask([]);
 	}
 	if (!response.ok) {
-		console.error(`Checking the brief failed (${response.status}):`, await response.text());
+		console.error(`Writing the report failed (${response.status}):`, await response.text());
 		return brief;
 	}
 
@@ -144,27 +170,39 @@ async function checkAgainstSources(
 	console.log(
 		JSON.stringify({
 			event: 'llm_usage',
-			call: 'research_read',
+			call: 'research_write',
 			model,
 			promptTokens: payload?.usage?.input_tokens ?? null,
 			completionTokens: payload?.usage?.output_tokens ?? null,
+			reasoningTokens: payload?.usage?.output_tokens_details?.reasoning_tokens ?? null,
+			status: payload?.status ?? null,
 			pages: texts.length,
+			excerpted: [...cut.values()].filter(Boolean).length,
 			pdfs: usedPdfs.length
 		})
 	);
+
 	const reply = (Array.isArray(payload?.output) ? payload.output : [])
 		.filter((item: any) => item?.type === 'message')
 		.flatMap((item: any) => (Array.isArray(item.content) ? item.content : []))
 		.map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
 		.join('');
+	const draft = parseDraft(reply);
+	if (!draft) {
+		console.error(`The writer's reply could not be read (status ${payload?.status}).`);
+		return brief;
+	}
 
 	const pdfNumbers = new Set(usedPdfs.map((pdf) => pdf.n));
-	const checked = applyChecks(brief, parseVerdicts(reply), pages, pdfNumbers);
+	const report = buildReport(draft, topic, { pages, pdfs: pdfNumbers });
+	if (reportTally(report).lines === 0) return brief;
+
 	return {
-		...checked,
-		sources: checked.sources.map((source) =>
+		...brief,
+		report,
+		sources: brief.sources.map((source) =>
 			pages.has(source.n)
-				? { ...source, read: 'text' as const, ...(truncated.get(source.n) && { truncated: true }) }
+				? { ...source, read: 'text' as const, ...(cut.get(source.n) && { truncated: true }) }
 				: pdfNumbers.has(source.n)
 					? { ...source, read: 'pdf' as const }
 					: source
@@ -348,12 +386,12 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 
 				let finished = brief;
 				if (DEEP_RESEARCH_READ_SOURCES > 0) {
-					send({ stage: 'reading' });
 					try {
-						finished = await checkAgainstSources(fetch, brief, model, deadline.signal);
+						const writer = writeModelFor(tierOf(locals)) ?? model;
+						finished = await writeReport(fetch, brief, facts, topic, writer, deadline.signal, (next) => send({ stage: next }));
 					} catch (error) {
 						if (cancelled) return;
-						console.error('Checking the brief against its sources failed:', error);
+						console.error('Writing the report failed:', error);
 					}
 				}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ResearchExchange } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
+	import ResearchReport from './ResearchReport.svelte';
 
 	type Props = {
 		exchange: ResearchExchange;
@@ -63,7 +64,14 @@
 		<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{exchange.topic}</p>
 	</div>
 
-	<section class="mt-8" aria-label="Research brief">
+	{#if brief.report}
+		<ResearchReport {brief} {index} />
+	{:else}
+		<p class="mt-8 rounded-lg border border-border-subtle bg-surface-1 p-3 text-caption text-text-tertiary">
+			The cited pages could not be written up, so this is the first search brief. Its statements
+			were not checked against the pages.
+		</p>
+	<section class="mt-6" aria-label="Research brief">
 		<p class="type-meta tracking-widest text-accent-text">
 			RESEARCH BRIEF · {brief.sources.length}
 			{brief.sources.length === 1 ? 'SOURCE' : 'SOURCES'}
@@ -165,7 +173,11 @@
 			{/if}
 		{/if}
 
-		<h3 class="type-meta mt-8 tracking-widest text-text-tertiary">SOURCES</h3>
+	</section>
+	{/if}
+
+	<section aria-label="Sources">
+		<h3 class="type-meta mt-10 tracking-widest text-text-tertiary">SOURCES</h3>
 		<ol class="mt-3 space-y-2">
 			{#each brief.sources as source}
 				<li id="source-{index}-{source.n}" class="flex gap-3 text-sm">
@@ -185,10 +197,10 @@
 							{source.host} ·
 							{source.official ? 'Official source' : 'A copy on Indian Kanoon, not the court’s own'}
 							{#if source.read === 'text'}
-								· Page read{source.truncated ? ' (first part only)' : ''}
+								· Page read{source.truncated ? ' (excerpts of a long document)' : ''}
 							{:else if source.read === 'pdf'}
 								· PDF read
-							{:else if checked.length > 0}
+							{:else if brief.report || checked.length > 0}
 								· Not read
 							{/if}
 						</span>

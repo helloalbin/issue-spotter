@@ -120,12 +120,36 @@ export const variables = defineEnvVars({
 		description: 'Longest a deep research run may take, searching and then reading the cited pages.',
 		schema: (value) => positiveInt(value, 180000)
 	},
+	DEEP_RESEARCH_WRITE_MODEL: {
+		description: 'Model that writes the research report from the pages. Defaults to DEEP_RESEARCH_MODEL. Any model works here: it does not search.',
+		schema: (value) => value || undefined
+	},
+	DEEP_RESEARCH_WRITE_MODEL_INVESTIGATIVE: {
+		description: 'Writer for the Investigative tier. Defaults to DEEP_RESEARCH_WRITE_MODEL.',
+		schema: (value) => value || undefined
+	},
+	DEEP_RESEARCH_WRITE_MODEL_RESEARCHER: {
+		description: 'Writer for the Researcher tier. Defaults to the Investigative writer.',
+		schema: (value) => value || undefined
+	},
+	DEEP_RESEARCH_REASONING_EFFORT: {
+		description: 'Reasoning effort sent to the writer when it is a reasoning model (gpt-5 family, o-series): minimal, low, medium or high.',
+		schema: (value) => (['minimal', 'low', 'medium', 'high'].includes(value ?? '') ? (value as string) : 'low')
+	},
+	DEEP_RESEARCH_WRITE_MAX_TOKENS: {
+		description: 'Most tokens the writer may produce, reasoning included.',
+		schema: (value) => positiveInt(value, 8000)
+	},
+	DEEP_RESEARCH_PDF_MAX_BYTES: {
+		description: 'Largest PDF handed to the writer. A bigger one is listed as opened but not read.',
+		schema: (value) => positiveInt(value, 1500000)
+	},
 	DEEP_RESEARCH_READ_SOURCES: {
-		description: 'Most cited pages a deep research run reads to check its brief against them. 0 turns the check off.',
+		description: 'Most cited pages a deep research run reads and writes its report from. 0 turns the report off and keeps the first brief.',
 		schema: (value) => (value === '0' ? 0 : positiveInt(value, 4))
 	},
 	DEEP_RESEARCH_READ_CHARS: {
-		description: 'Most characters of one cited page read for the check. A long judgment is cut here.',
+		description: 'Most characters of one cited page given to the writer. A longer judgment is cut down to its most relevant paragraphs, not at the end.',
 		schema: (value) => positiveInt(value, 40000)
 	},
 	FILE_READ_DAILY_LIMIT: {

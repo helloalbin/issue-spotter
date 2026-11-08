@@ -94,7 +94,8 @@ export function limitText(text: string, max: number): { text: string; truncated:
 	return { text: (boundary > max * 0.8 ? cut.slice(0, boundary) : cut).trimEnd(), truncated: true };
 }
 
-const MAX_BYTES = 1_500_000;
+// Large enough for a Constitution Bench judgment, whose closing order is the part most needed.
+const MAX_BYTES = 5_000_000;
 const MAX_REDIRECTS = 3;
 
 export type FetchedPage = { url: string; title: string; host: string; text: string; truncated: boolean };

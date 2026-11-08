@@ -1,7 +1,14 @@
 import type { SpotSection } from '#lib/spotter.js';
 
 export type Section = SpotSection;
-const SECTIONS: readonly string[] = ['issues', 'doctrines', 'precedents', 'acts'];
+const SECTIONS: readonly string[] = [
+	'summary',
+	'issues',
+	'doctrines',
+	'precedents',
+	'acts',
+	'counterArguments'
+];
 
 /** Something the parser found in the model's JSON as it streamed in. */
 export type Piece = { item: { section: Section; value: unknown } } | { done: Section };

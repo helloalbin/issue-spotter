@@ -13,17 +13,26 @@ export type Precedent = {
 	year?: string;
 };
 
+/** The strongest point the other side could make on one issue. */
+export type CounterArgument = { issue: string; argument: string };
+
 export type SpotterResult = {
+	/** Present when the Summarize skill was on. */
+	summary?: string[];
 	issues: string[];
 	doctrines: string[];
 	precedents: Precedent[];
 	acts: ActReference[];
 	/** The jurisdiction the model applied, e.g. "India". */
 	jurisdiction?: string;
+	/** Present when the Counter-args skill was on. */
+	counterArguments?: CounterArgument[];
 };
 
 /** Entries found so far while an analysis is still being written, by section. */
 export type Streamed = {
+	summary: string[];
+	counterArguments: CounterArgument[];
 	issues: string[];
 	doctrines: string[];
 	precedents: Precedent[];
@@ -53,6 +62,24 @@ export type SourceMatch = { key: string; url: string; title: string; host: strin
 /** What produced the analysis, for the verification pane. */
 export type AnalysisMeta = { model: string; ms: number };
 
+/**
+ * A page the user attached as background, fetched by our server from an allowed legal site. Its text
+ * is sent with each analysis of the case.
+ */
+export type Attachment = {
+	url: string;
+	title: string;
+	host: string;
+	text: string;
+	/** True when the page was longer than the limit and only its start is used. */
+	truncated: boolean;
+};
+
+export const MAX_ATTACHMENTS = 5;
+export const MAX_ATTACHMENT_CHARS = 12000;
+/** All attachments together, so a long conversation cannot grow without bound. */
+export const MAX_CONTEXT_CHARS = 30000;
+
 export type QuotaInfo = {
 	signedIn: boolean;
 	limit: number;
@@ -61,13 +88,20 @@ export type QuotaInfo = {
 	resetsAt: number;
 };
 
-export type SpotSection = 'issues' | 'doctrines' | 'precedents' | 'acts';
+export type SpotSection =
+	| 'summary'
+	| 'issues'
+	| 'doctrines'
+	| 'precedents'
+	| 'acts'
+	| 'counterArguments';
 
 /** One finished entry of a section, sent while the analysis is still being written. */
 export type SpotItem =
-	| { section: 'issues' | 'doctrines'; value: string }
+	| { section: 'summary' | 'issues' | 'doctrines'; value: string }
 	| { section: 'precedents'; value: Precedent }
-	| { section: 'acts'; value: ActReference };
+	| { section: 'acts'; value: ActReference }
+	| { section: 'counterArguments'; value: CounterArgument };
 
 /** Newline-delimited JSON events streamed by POST /api/spot. */
 export type SpotEvent =

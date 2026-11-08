@@ -13,12 +13,21 @@ import {
 } from '$app/env/private';
 import { Deadline } from '#lib/server/deadline.js';
 import { subjectFor } from '#lib/server/identity.js';
+import {
+	analysisTokens,
+	buildSystemPrompt,
+	buildUserText,
+	parseContext,
+	parseSkills
+} from '#lib/server/prompt.js';
 import { SectionParser } from '#lib/server/section-stream.js';
 import { verifySources } from '#lib/server/sources.js';
 import { quotaInfo, rejectionSubject, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
+import type { ActiveSkill } from '#lib/skills.js';
 import type {
 	ActReference,
+	CounterArgument,
 	Precedent,
 	SpotEvent,
 	SpotItem,
@@ -30,19 +39,6 @@ import type { RequestHandler } from './$types';
 const CLASSIFIER_PROMPT =
 	'Decide whether the user message describes a factual scenario that could raise legal issues ' +
 	'(a real or hypothetical case fact pattern). Answer with exactly one word: yes or no.';
-
-const SYSTEM_PROMPT =
-	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. ' +
-	'The facts may include later parts introduced with "Further facts:". They belong to the same case: analyse the case as a whole. ' +
-	'Output JSON with these keys, in this order: jurisdiction, issues, doctrines, precedents, acts. ' +
-	'jurisdiction is a short string naming the jurisdiction you applied, such as "India". ' +
-	'issues and doctrines must each map to an array of short bullet-ready strings (max 8 each). ' +
-	'precedents must map to an array of up to 8 objects, each shaped like {"case": "Party v. Party", "year": "1987"}; ' +
-	'give the year as four digits only if you are sure of it, otherwise omit it. ' +
-	'acts must map to an array of up to 6 objects, each shaped like ' +
-	'{"act": "Name of the Act, Year", "sections": ["Section 73", "Section 74"], "relevance": "one line on why it applies"}. ' +
-	'Name the most relevant statute for the facts; use the jurisdiction the facts imply (default to Indian law for Indian-style facts). ' +
-	'If no statute squarely applies, return an empty acts array.';
 
 function normalizeList(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
@@ -72,6 +68,21 @@ function normalizePrecedents(value: unknown): Precedent[] {
 		if (precedents.length >= 8) break;
 	}
 	return precedents;
+}
+
+function normalizeCounterArguments(value: unknown): CounterArgument[] {
+	if (!Array.isArray(value)) return [];
+	const items: CounterArgument[] = [];
+	for (const item of value) {
+		if (item && typeof item === 'object') {
+			const record = item as Record<string, unknown>;
+			const issue = typeof record.issue === 'string' ? record.issue.trim() : '';
+			const argument = typeof record.argument === 'string' ? record.argument.trim() : '';
+			if (issue && argument) items.push({ issue, argument });
+		}
+		if (items.length >= 6) break;
+	}
+	return items;
 }
 
 function normalizeJurisdiction(value: unknown): string | undefined {
@@ -363,7 +374,14 @@ async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise
 	}
 }
 
-const MAX_ITEMS: Record<SpotSection, number> = { issues: 8, doctrines: 8, precedents: 8, acts: 6 };
+const MAX_ITEMS: Record<SpotSection, number> = {
+	summary: 5,
+	issues: 8,
+	doctrines: 8,
+	precedents: 8,
+	acts: 6,
+	counterArguments: 6
+};
 
 /**
  * Streams the analysis: `emit` gets each item and each finished section while the model is still
@@ -371,20 +389,27 @@ const MAX_ITEMS: Record<SpotSection, number> = { issues: 8, doctrines: 8, preced
  */
 async function analyze(
 	fetchFn: typeof fetch,
-	facts: string,
+	request: { system: string; user: string; maxTokens: number; skills: ActiveSkill[] },
 	signal: AbortSignal,
 	emit: (event: SpotEvent) => void
 ): Promise<SpotterResult> {
 	const parser = new SectionParser();
-	const counts: Record<SpotSection, number> = { issues: 0, doctrines: 0, precedents: 0, acts: 0 };
+	const counts: Record<SpotSection, number> = {
+		summary: 0,
+		issues: 0,
+		doctrines: 0,
+		precedents: 0,
+		acts: 0,
+		counterArguments: 0
+	};
 
 	const { content } = await chatStream(
 		fetchFn,
 		{
 			label: 'analysis',
-			system: SYSTEM_PROMPT,
-			user: facts,
-			maxTokens: ANALYSIS_MAX_TOKENS,
+			system: request.system,
+			user: request.user,
+			maxTokens: request.maxTokens,
 			temperature: 0.2,
 			jsonMode: true
 		},
@@ -404,7 +429,9 @@ async function analyze(
 						? normalizeActs([value])[0]
 						: section === 'precedents'
 							? normalizePrecedents([value])[0]
-							: normalizeList([value])[0];
+							: section === 'counterArguments'
+								? normalizeCounterArguments([value])[0]
+								: normalizeList([value])[0];
 				if (!entry) continue;
 
 				counts[section] += 1;
@@ -422,11 +449,15 @@ async function analyze(
 	}
 
 	return {
+		...(request.skills.includes('summarize') && { summary: normalizeList(parsed.summary).slice(0, 5) }),
 		jurisdiction: normalizeJurisdiction(parsed.jurisdiction),
 		issues: normalizeList(parsed.issues),
 		doctrines: normalizeList(parsed.doctrines),
 		precedents: normalizePrecedents(parsed.precedents),
-		acts: normalizeActs(parsed.acts)
+		acts: normalizeActs(parsed.acts),
+		...(request.skills.includes('counter-arguments') && {
+			counterArguments: normalizeCounterArguments(parsed.counterArguments)
+		})
 	};
 }
 
@@ -439,10 +470,14 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	}
 
 	let facts = '';
+	let rawSkills: unknown;
+	let rawContext: unknown;
 
 	try {
 		const body = await request.json();
 		facts = typeof body?.facts === 'string' ? body.facts : '';
+		rawSkills = body?.skills;
+		rawContext = body?.context;
 	} catch {
 		return Response.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
 	}
@@ -459,9 +494,15 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 			{ status: 400 }
 		);
 	}
+	const parsedContext = parseContext(rawContext, { allowLocal: import.meta.env.DEV });
+	if (!parsedContext.ok) {
+		return Response.json({ error: parsedContext.error }, { status: 400 });
+	}
 	if (!OPENAI_API_KEY) {
 		return Response.json({ error: 'Server is missing OPENAI_API_KEY configuration.' }, { status: 500 });
 	}
+	const skills = parseSkills(rawSkills);
+	const context = parsedContext.context;
 
 	const db = env.DB;
 	if (!db) {
@@ -482,6 +523,12 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 	}
 
 	const trimmed = facts.trim();
+	const analysisRequest = {
+		system: buildSystemPrompt(skills, context.length > 0),
+		user: buildUserText(trimmed, context),
+		maxTokens: analysisTokens(ANALYSIS_MAX_TOKENS, skills),
+		skills
+	};
 	const encoder = new TextEncoder();
 	let remaining = reservation.remaining;
 
@@ -509,7 +556,9 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				send({ quota: quotaInfo(subject, remaining) });
 
 				// Clear legal vocabulary skips the classifier call; anything unsure is checked.
-				if (!looksLegal(trimmed)) {
+				// An attached legal page shows the case is legal even when the typed text is short, such as
+				// "summarize this", so the classifier is skipped then.
+				if (context.length === 0 && !looksLegal(trimmed)) {
 					send({ stage: 'verifying' });
 					if (!(await isLegalFactPattern(fetch, trimmed))) {
 						// A rejection is free, up to a cap, so it can't be spammed.
@@ -526,7 +575,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 
 				send({ stage: 'analyzing' });
 				const startedAt = Date.now();
-				const result = await analyze(fetch, trimmed, upstream.signal, send);
+				const result = await analyze(fetch, analysisRequest, upstream.signal, send);
 				send({ meta: { model: OPENAI_MODEL, ms: Date.now() - startedAt } });
 				send({ result });
 

@@ -33,6 +33,7 @@ const CLASSIFIER_PROMPT =
 
 const SYSTEM_PROMPT =
 	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. ' +
+	'The facts may include later parts introduced with "Further facts:". They belong to the same case: analyse the case as a whole. ' +
 	'Output JSON with these keys, in this order: jurisdiction, issues, doctrines, precedents, acts. ' +
 	'jurisdiction is a short string naming the jurisdiction you applied, such as "India". ' +
 	'issues and doctrines must each map to an array of short bullet-ready strings (max 8 each). ' +

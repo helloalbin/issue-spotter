@@ -1,4 +1,5 @@
 import { auth } from '#lib/auth.svelte.js';
+import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
 import { SAMPLES } from '#lib/samples.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 import type {
@@ -20,8 +21,11 @@ export const WIDE_SCREEN = '(min-width: 1024px)';
  */
 class Workspace {
 	facts = $state('');
-	/** The facts behind the analysis on screen. The composer is emptied once a result arrives. */
-	submittedFacts = $state('');
+	/**
+	 * The case so far: the first message and each follow-up, as typed. The composer holds only what
+	 * is about to be added, and is emptied once a result arrives.
+	 */
+	turns = $state<string[]>([]);
 	isLoading = $state(false);
 	errorMessage = $state('');
 	notice = $state('');
@@ -42,14 +46,26 @@ class Workspace {
 	/** Sections the model has finished writing. */
 	closed = $state<SpotSection[]>([]);
 
-	charCount = $derived(this.facts.length);
-	overLimit = $derived(this.facts.length > MAX_FACTS);
-	showContextTip = $derived(this.facts.trim().length >= 40 && !looksLegal(this.facts));
+	/** The whole case, which is what the limit applies to, not just the draft. */
+	charCount = $derived(caseText(this.result ? this.turns : [], this.facts).length);
+	overLimit = $derived(this.charCount > MAX_FACTS);
+	showContextTip = $derived(
+		this.facts.trim().length >= 40 && !looksLegal(caseText(this.result ? this.turns : [], this.facts))
+	);
 
 	#sampleIndex = 0;
 	#abort: AbortController | null = null;
 	/** Tells one search from the next, so a stopped search cannot touch the state of a newer one. */
 	#run = 0;
+	/** What was on screen before a follow-up started, so a failed one can put it back. */
+	#previous: {
+		result: SpotterResult;
+		meta: AnalysisMeta | null;
+		sources: Record<string, SourceMatch>;
+		verification: 'idle' | 'running' | 'done';
+	} | null = null;
+	/** The message being sent, committed to the case only when its analysis arrives. */
+	#pending = { added: '', followUp: false };
 
 	/** Re-reads the remaining searches for whoever is signed in (or the anonymous visitor). */
 	async refreshQuota() {
@@ -73,6 +89,14 @@ class Workspace {
 		this.#sampleIndex += 1;
 	}
 
+	/** Empties what is about to be sent. The case already analysed is untouched. */
+	clearDraft() {
+		this.facts = '';
+		this.errorMessage = '';
+		this.notice = '';
+	}
+
+	/** Starts over: forgets the case and its result. */
 	clearAll() {
 		this.#abort?.abort();
 		this.#run += 1;
@@ -84,13 +108,27 @@ class Workspace {
 		this.errorMessage = '';
 		this.notice = '';
 		this.result = null;
-		this.submittedFacts = '';
+		this.turns = [];
+		this.#previous = null;
 	}
 
-	/** Puts the analysed facts back in the composer for editing. */
+	/** Puts the whole case back in the composer to edit it, as one piece of text. */
 	editFacts() {
-		this.facts = this.submittedFacts;
+		this.facts = this.turns.join('\n\n');
+		this.turns = [];
 		this.result = null;
+		this.meta = null;
+		this.sources = {};
+		this.verification = 'idle';
+	}
+
+	#restorePrevious() {
+		if (!this.#previous) return;
+		this.result = this.#previous.result;
+		this.meta = this.#previous.meta;
+		this.sources = this.#previous.sources;
+		this.verification = this.#previous.verification === 'running' ? 'done' : this.#previous.verification;
+		this.#previous = null;
 	}
 
 	#handleEvent(event: SpotEvent) {
@@ -111,8 +149,9 @@ class Workspace {
 		} else if ('sectionDone' in event) {
 			if (!this.closed.includes(event.sectionDone)) this.closed.push(event.sectionDone);
 		} else if ('result' in event) {
-			this.submittedFacts = this.facts;
+			this.turns = this.#pending.followUp ? [...this.turns, this.#pending.added] : [this.#pending.added];
 			this.facts = '';
+			this.#previous = null;
 			this.result = {
 				jurisdiction:
 					typeof event.result?.jurisdiction === 'string' ? event.result.jurisdiction : undefined,
@@ -152,16 +191,31 @@ class Workspace {
 		if (this.isLoading) return;
 		this.errorMessage = '';
 		this.notice = '';
-		this.result = null;
 
-		if (this.facts.trim().length < MIN_FACTS) {
-			this.errorMessage = `Please provide a fuller factual summary (at least ${MIN_FACTS} characters).`;
+		// With a result on screen, what is typed continues that case instead of starting a new one.
+		const added = this.facts;
+		const followUp = this.result !== null && this.turns.length > 0;
+		const text = caseText(followUp ? this.turns : [], added);
+
+		if (added.trim().length < (followUp ? MIN_FOLLOW_UP : MIN_FACTS)) {
+			this.errorMessage = followUp
+				? 'Add a few more words about what happened.'
+				: `Please provide a fuller factual summary (at least ${MIN_FACTS} characters).`;
 			return;
 		}
-		if (this.facts.length > MAX_FACTS) {
-			this.errorMessage = `Please keep the factual summary under ${MAX_FACTS.toLocaleString()} characters.`;
+		if (text.length > MAX_FACTS) {
+			this.errorMessage = followUp
+				? `The case and what you added come to more than ${MAX_FACTS.toLocaleString()} characters. Shorten what you added, or edit the case.`
+				: `Please keep the factual summary under ${MAX_FACTS.toLocaleString()} characters.`;
 			return;
 		}
+
+		this.#previous =
+			followUp && this.result
+				? { result: this.result, meta: this.meta, sources: this.sources, verification: this.verification }
+				: null;
+		this.#pending = { added, followUp };
+		this.result = null;
 
 		this.isLoading = true;
 		this.streamed = { issues: [], doctrines: [], precedents: [], acts: [] };
@@ -181,7 +235,7 @@ class Workspace {
 					'content-type': 'application/json',
 					...(await auth.headers())
 				},
-				body: JSON.stringify({ facts: this.facts })
+				body: JSON.stringify({ facts: text })
 			});
 
 			if (!response.ok || !response.body) {
@@ -238,6 +292,8 @@ class Workspace {
 				this.#abort = null;
 				this.isLoading = false;
 				this.stage = null;
+				// A follow-up that did not produce an answer leaves the previous one in place.
+				if (!this.result) this.#restorePrevious();
 				// The stream may have ended mid-verification; the search links simply stay.
 				if ((this.verification as string) === 'running') this.verification = 'done';
 			}

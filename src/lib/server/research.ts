@@ -67,10 +67,40 @@ export function splitSentences(line: string): { text: string; start: number; end
 const clean = (text: string) =>
 	text
 		.replace(/\*\*|__|`/g, '')
+		.replace(/(^|[^\w*])\*([^*\n]+)\*(?![\w*])/g, '$1$2')
 		.replace(/\s*\(\s*[,;]?\s*\)/g, '')
 		.replace(/\s{2,}/g, ' ')
 		.replace(/\s+([.,;:])/g, '$1')
 		.trim();
+
+/** A link without the tracking parameters the search tool adds, so one page is one source. */
+export function cleanUrl(raw: string): string {
+	try {
+		const url = new URL(raw);
+		for (const key of [...url.searchParams.keys()]) if (key.toLowerCase().startsWith('utm_')) url.searchParams.delete(key);
+		return url.toString();
+	} catch {
+		return raw;
+	}
+}
+
+const MONTHS: Record<string, string> = { jan: 'January', feb: 'February', mar: 'March', apr: 'April', may: 'May', jun: 'June', jul: 'July', aug: 'August', sep: 'September', oct: 'October', nov: 'November', dec: 'December' };
+
+/**
+ * A title for a source. The search tool sometimes gives a snippet of the page's text instead of a
+ * title; then a Supreme Court file is named from its file name (which carries the date) and any
+ * other page by its site.
+ */
+export function sourceTitle(title: string, url: string, host: string): string {
+	const text = title.replace(/\s+/g, ' ').trim();
+	if (/^[A-Z0-9]/.test(text) && text.length <= 110 && !/[,;:-]$/.test(text)) return text;
+
+	const dated = url.match(/_(?:Judgement|Judgment)_(\d{1,2})-([A-Za-z]{3})-(\d{4})\.pdf/i);
+	if (dated && isAllowedHost(host, ['sci.gov.in', 'sci.in'])) {
+		return `Supreme Court judgment of ${Number(dated[1])} ${MONTHS[dated[2].toLowerCase()] ?? dated[2]} ${dated[3]} (PDF)`;
+	}
+	return host;
+}
 
 const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
 const GAPS_HEADING = /could not (confirm|find|verify)|not confirmed|gaps?|unable to confirm/i;
@@ -110,11 +140,12 @@ export function buildBrief(
 			const host = typeof span.url === 'string' ? hostOf(span.url) : null;
 			if (!span.url || !host || !isAllowedHost(host, domains)) continue;
 
-			let n = numberOf.get(span.url);
+			const url = cleanUrl(span.url);
+			let n = numberOf.get(url);
 			if (!n) {
 				n = sources.length + 1;
-				numberOf.set(span.url, n);
-				sources.push({ n, url: span.url, title: clean(span.title ?? '') || host, host, official: isOfficialHost(host) });
+				numberOf.set(url, n);
+				sources.push({ n, url, title: sourceTitle(clean(span.title ?? ''), url, host), host, official: isOfficialHost(host) });
 			}
 			// Attach to the sentence before it, even when a space comes between them.
 			marks.push({ pos: cleanText.trimEnd().length, n });
@@ -129,7 +160,7 @@ export function buildBrief(
 	for (const rawLine of cleanText.split('\n')) {
 		const offset = lineStart;
 		lineStart += rawLine.length + 1;
-		if (!rawLine.trim()) continue;
+		if (!rawLine.trim() || /^\s*[-–—_*=]{3,}\s*$/.test(rawLine)) continue;
 
 		const heading = rawLine.match(/^\s*#{1,4}\s+(.*)$/);
 		if (heading) {
@@ -138,7 +169,7 @@ export function buildBrief(
 			continue;
 		}
 
-		const bullet = rawLine.match(/^(\s*(?:[-*•]|\d+[.)])\s+)/);
+		const bullet = rawLine.match(/^(\s*(?:[-*•–—]|\d+[.)])\s+)/);
 		const body = bullet ? rawLine.slice(bullet[1].length) : rawLine;
 		const bodyStart = offset + (bullet ? bullet[1].length : 0);
 
@@ -174,7 +205,8 @@ export const RESEARCH_INSTRUCTIONS =
 	'Prefer official sources: the Supreme Court, High Courts, India Code and the e-Gazette. Use an Indian Kanoon document page only when the official page is not available. ' +
 	'If you cannot find a source for something, do not state it. If you find no source on the topic, say so plainly. ' +
 	'Never invent case names, citations, quotations, holdings or section numbers. Treat the case facts as the user\'s own account, not as a source. ' +
-	'Write plain text: short ## headings, short paragraphs, one claim per sentence, and "- " for lists; no bold or other markup. ' +
+	'State a case\'s name, year and court exactly as the page gives them; if the page does not say, leave it out. ' +
+	'Write plain text: short ## headings, short paragraphs, one claim per sentence, and "- " for lists; no bold, no --- dividers, no other markup. Do not open with a line about what you are about to do. ' +
 	'Begin with a two or three sentence answer. Then give the sections you need. End with a section headed "What I could not confirm" listing anything you looked for and did not find.';
 
 export function researchInput(caseFacts: string, topic: string): string {

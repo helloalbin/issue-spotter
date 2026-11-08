@@ -29,8 +29,9 @@
 	<h2>Research briefs are not verified advice</h2>
 	<p>
 		Deep research writes a brief from pages found on court and statute websites and links each
-		statement to the pages it came from. A statement with no page is marked. A link shows where the
-		model found something, not that the page says what the brief claims, and a copy of a judgment
+		statement to the pages it came from. A statement with no page is marked. The app then reads the cited pages and
+		marks the statements the page does not clearly back, but that check is also done by an AI model,
+		covers only the first part of a long judgment, and cannot check a quote from a PDF itself. A copy of a judgment
 		on Indian Kanoon is not the court's own text. <strong>Open each source and read the passage
 		before relying on it.</strong> Deep research is limited to a few runs a month.
 	</p>

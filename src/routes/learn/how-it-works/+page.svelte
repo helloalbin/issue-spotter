@@ -80,7 +80,9 @@
 		officer. {SITE_NAME} searches court and statute sites (the Supreme Court of India, India Code,
 		the e-Gazette and High Court sites, plus Indian Kanoon copies) and writes a short brief. Every
 		statement carries the numbers of the pages it came from, and a statement with no page is marked
-		<em>no source</em>. A topic outside your case is turned away and costs nothing. It is limited to
+		<em>no source</em>. The app then opens the cited pages and checks each statement against
+		them: a tick means the page contains the passage quoted under <em>What the pages say</em>, and a
+		mark such as <em>partly</em> or <em>not found on page</em> means it does not clearly say so. A topic outside your case is turned away and costs nothing. It is limited to
 		a few runs a month because each one costs far more than a search. Read the pages before you
 		rely on them.
 	</p>

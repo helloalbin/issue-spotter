@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildBrief, isOfficialHost, splitSentences, uncitedCount } from './research.ts';
+import { buildBrief, cleanUrl, isOfficialHost, sourceTitle, splitSentences, uncitedCount } from './research.ts';
 
 const cite = (text: string, link: string, url: string, title = 'Page') => {
 	const marker = `([${link}](${url}))`;
@@ -75,4 +75,34 @@ test('lists keep their bullets, and bold markers and empty brackets are cleaned 
 	assert.equal(brief.blocks.length, 2);
 	assert.ok(brief.blocks.every((b) => b.kind === 'paragraph' && b.bullet));
 	assert.equal(brief.blocks[0].kind === 'paragraph' && brief.blocks[0].sentences[0].text, 'Maneka Gandhi held that procedure must be fair and reasonable.');
+});
+
+test('tracking parameters are removed so one page is one source', () => {
+	assert.equal(cleanUrl('https://api.sci.gov.in/a.pdf?utm_source=openai'), 'https://api.sci.gov.in/a.pdf');
+	assert.equal(cleanUrl('https://indiankanoon.org/doc/1/?utm_source=openai&x=1'), 'https://indiankanoon.org/doc/1/?x=1');
+	const a = `One point is made here. ([sci.gov.in](${SC}?utm_source=openai)) Another point is made here. ([sci.gov.in](${SC}))`;
+	const brief = buildBrief('t', [{ text: a, annotations: [cite(a, 'sci.gov.in', `${SC}?utm_source=openai`), cite(a, 'sci.gov.in', SC)] }], 1);
+	assert.equal(brief.sources.length, 1);
+	assert.equal(brief.sources[0].url, SC);
+});
+
+test('a snippet of text is not used as a title', () => {
+	const pdf = 'https://api.sci.gov.in/supremecourt/2023/40323/40323_2023_15_1501_49103_Judgement_15-Dec-2023.pdf';
+	assert.equal(sourceTitle('of the arrested person in the offence of money-laundering. Therefore,', pdf, 'api.sci.gov.in'), 'Supreme Court judgment of 15 December 2023 (PDF)');
+	assert.equal(sourceTitle('Pankaj Bansal vs Union Of India on 3 October, 2023', 'https://indiankanoon.org/doc/1/', 'indiankanoon.org'), 'Pankaj Bansal vs Union Of India on 3 October, 2023');
+	assert.equal(sourceTitle('basis of material in his possession,', 'https://example/x', 'indiacode.nic.in'), 'indiacode.nic.in');
+});
+
+test('dash bullets are bullets and a rule line is dropped', () => {
+	const text = '## Answer\n– The first point is made at length here.\n---\n— The second point is made at length here.';
+	const brief = buildBrief('t', [{ text, annotations: [] }], 0);
+	const paragraphs = brief.blocks.filter((b) => b.kind === 'paragraph') as { bullet: boolean; sentences: { text: string }[] }[];
+	assert.deepEqual(paragraphs.map((p) => [p.bullet, p.sentences[0].text]), [[true, 'The first point is made at length here.'], [true, 'The second point is made at length here.']]);
+});
+
+test('single-asterisk emphasis is removed but a footnote star or a product is not', () => {
+	const text = 'The Court in *Pankaj Bansal* held that **written** grounds are due. Section 19 applies to a * b as written.';
+	const brief = buildBrief('t', [{ text, annotations: [] }], 0);
+	const first = brief.blocks[0].kind === 'paragraph' ? brief.blocks[0].sentences[0].text : '';
+	assert.equal(first, 'The Court in Pankaj Bansal held that written grounds are due.');
 });

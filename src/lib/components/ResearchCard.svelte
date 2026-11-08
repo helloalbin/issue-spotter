@@ -12,6 +12,23 @@
 	let { exchange, index, isLast, onEdit }: Props = $props();
 
 	let brief = $derived(exchange.brief);
+	/** The sentences whose cited page was read, for the passages list and the tally. */
+	let checked = $derived(
+		brief.blocks.flatMap((block) =>
+			block.kind === 'paragraph' ? block.sentences.filter((sentence) => sentence.check) : []
+		)
+	);
+	let passages = $derived(checked.filter((sentence) => sentence.check?.quote));
+	let held = $derived(
+		checked.filter((sentence) => sentence.check?.status === 'confirmed' || sentence.check?.status === 'read').length
+	);
+	let cited = $derived(
+		brief.blocks.reduce(
+			(total, block) =>
+				total + (block.kind === 'paragraph' ? block.sentences.filter((s) => s.cites.length > 0).length : 0),
+			0
+		)
+	);
 	let uncited = $derived(
 		brief.blocks.reduce(
 			(total, block) =>
@@ -69,6 +86,33 @@
 										aria-label="Source {n}">[{n}]</a
 									>
 								{/each}
+								{#if sentence.check?.status === 'confirmed'}
+									<span
+										class="ml-0.5 inline-flex align-text-bottom text-accent-text"
+										title="Confirmed: the page contains the passage quoted below"
+									>
+										<Icon name="badgeCheck" size={12} />
+										<span class="sr-only">Confirmed against the page</span>
+									</span>
+								{:else if sentence.check?.status === 'read'}
+									<span
+										class="ml-0.5 inline-flex align-text-bottom text-text-tertiary"
+										title="The PDF was read and a passage quoted below, but the app could not check the quote itself"
+									>
+										<Icon name="badgeCheck" size={12} />
+										<span class="sr-only">PDF read, quote not checked by the app</span>
+									</span>
+								{:else if sentence.check}
+									<span
+										class="ml-1 rounded-sm border border-border-subtle px-1.5 py-px font-mono text-[10px] text-text-tertiary"
+										title="The cited page was read and does not clearly say this. Read it yourself."
+										>{sentence.check.status === 'partial'
+											? 'PARTLY'
+											: sentence.check.status === 'unsupported'
+												? 'NOT FOUND ON PAGE'
+												: 'QUOTE NOT ON PAGE'}</span
+									>
+								{/if}
 								{#if sentence.uncited}
 									<span
 										class="ml-1 rounded-sm border border-border-subtle px-1.5 py-px font-mono text-[10px] text-text-tertiary"
@@ -92,6 +136,35 @@
 			</p>
 		{/if}
 
+		{#if checked.length > 0}
+			<p class="mt-4 text-caption text-text-tertiary">
+				The cited pages were read: {held} of {cited} cited statements are backed by a passage on
+				the page. Where a mark says otherwise, open the source before relying on the sentence.
+			</p>
+			{#if passages.length > 0}
+				<details class="mt-3 rounded-lg border border-border-subtle bg-surface-1 p-3">
+					<summary class="cursor-pointer text-sm font-medium text-text-secondary">
+						What the pages say ({passages.length})
+					</summary>
+					<ul class="mt-3 space-y-3">
+						{#each passages as sentence}
+							<li class="text-sm">
+								<p class="text-text-secondary">{sentence.text}</p>
+								<blockquote class="mt-1 border-l-2 border-border-default pl-3 text-text-tertiary">
+									{sentence.check?.quote}
+									<a
+										href="#source-{index}-{sentence.check?.source}"
+										class="ml-1 font-mono text-[10px] text-accent-text hover:underline"
+										>[{sentence.check?.source}]</a
+									>
+								</blockquote>
+							</li>
+						{/each}
+					</ul>
+				</details>
+			{/if}
+		{/if}
+
 		<h3 class="type-meta mt-8 tracking-widest text-text-tertiary">SOURCES</h3>
 		<ol class="mt-3 space-y-2">
 			{#each brief.sources as source}
@@ -111,6 +184,13 @@
 						<span class="mt-0.5 block text-caption text-text-tertiary">
 							{source.host} ·
 							{source.official ? 'Official source' : 'A copy on Indian Kanoon, not the court’s own'}
+							{#if source.read === 'text'}
+								· Page read{source.truncated ? ' (first part only)' : ''}
+							{:else if source.read === 'pdf'}
+								· PDF read
+							{:else if checked.length > 0}
+								· Not read
+							{/if}
 						</span>
 					</span>
 				</li>

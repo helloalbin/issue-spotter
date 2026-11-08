@@ -99,9 +99,23 @@ export function lookupCount(result: SpotterResult): number {
 export type SourceMatch = { key: string; url: string; title: string; host: string };
 
 /** One sentence of a research brief, with the numbers of the sources that back it. */
+/**
+ * What reading the cited pages found for one sentence. `confirmed`: the page's text contains the
+ * quoted passage and it supports the sentence. `read`: the model read a PDF and quoted a passage we
+ * could not check ourselves. `partial` / `unsupported`: the page was read and does not fully back
+ * the sentence. `unverified`: the model claimed support but its quote is not on the page.
+ */
+export type ResearchCheck = {
+	status: 'confirmed' | 'read' | 'partial' | 'unsupported' | 'unverified';
+	source: number;
+	quote?: string;
+};
+
 export type ResearchSentence = {
 	text: string;
 	cites: number[];
+	/** Absent when no cited page could be read. */
+	check?: ResearchCheck;
 	/** True when it states something but no source was found for it. */
 	uncited: boolean;
 };
@@ -117,6 +131,10 @@ export type ResearchSource = {
 	host: string;
 	/** A court, a ministry or a statute site, as opposed to a copy of a judgment on Indian Kanoon. */
 	official: boolean;
+	/** How the page was read to check the brief: its text, a PDF read by the model, or not at all. */
+	read?: 'text' | 'pdf';
+	/** Only the first part of a long judgment was read. */
+	truncated?: boolean;
 };
 
 /** A research brief: what was found, in cited sentences, and the pages it came from. */
@@ -198,7 +216,7 @@ export type SpotItem =
 /** Newline-delimited JSON events streamed by POST /api/research. */
 export type ResearchEvent =
 	| { research: QuotaInfo }
-	| { stage: 'checking' | 'searching' }
+	| { stage: 'checking' | 'searching' | 'reading' }
 	| { brief: ResearchBrief }
 	/** The topic is not part of the user's case; nothing was spent. */
 	| { offTopic: string }

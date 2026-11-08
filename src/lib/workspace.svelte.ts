@@ -134,7 +134,7 @@ class Workspace {
 	researchMode = $state(false);
 	/** Deep research runs in progress, which is a different job from analysing. */
 	researching = $state(false);
-	researchStage = $state<'checking' | 'searching' | null>(null);
+	researchStage = $state<'checking' | 'searching' | 'reading' | null>(null);
 	/** Remaining deep research this month; the value loaded with the page until a run updates it. */
 	researchQuota = $state<QuotaInfo | null>(null);
 

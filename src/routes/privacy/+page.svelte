@@ -67,7 +67,8 @@
 	<p>
 		Deep research sends your case and the point you ask about to the AI model provider, which
 		searches court and statute websites (such as the Supreme Court of India and India Code) for
-		pages to cite. The brief is not stored by us; it stays in your browser. We count runs per
+		pages to cite. Our server then fetches the pages it cited and sends their text, or the PDF's
+		address, to the same provider to check each statement against them. The brief is not stored by us; it stays in your browser. We count runs per
 		month, using the same random ID and hashed IP address as your searches.
 	</p>
 

@@ -117,8 +117,16 @@ export const variables = defineEnvVars({
 		schema: (value) => positiveInt(value, 12)
 	},
 	DEEP_RESEARCH_TIMEOUT_MS: {
-		description: 'Longest a deep research run may take.',
-		schema: (value) => positiveInt(value, 120000)
+		description: 'Longest a deep research run may take, searching and then reading the cited pages.',
+		schema: (value) => positiveInt(value, 180000)
+	},
+	DEEP_RESEARCH_READ_SOURCES: {
+		description: 'Most cited pages a deep research run reads to check its brief against them. 0 turns the check off.',
+		schema: (value) => (value === '0' ? 0 : positiveInt(value, 4))
+	},
+	DEEP_RESEARCH_READ_CHARS: {
+		description: 'Most characters of one cited page read for the check. A long judgment is cut here.',
+		schema: (value) => positiveInt(value, 40000)
 	},
 	FILE_READ_DAILY_LIMIT: {
 		description: 'Files one visitor or account may upload to be read per day. Unreadable or unrelated files are refunded.',

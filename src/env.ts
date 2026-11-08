@@ -84,6 +84,14 @@ export const variables = defineEnvVars({
 		description: 'Longest the whole analysis call may take, even while it keeps streaming.',
 		schema: (value) => positiveInt(value, 90000)
 	},
+	URL_FETCH_DAILY_LIMIT: {
+		description: 'Pages one visitor or account may add as background per day. Failed fetches are not counted.',
+		schema: (value) => positiveInt(value, 20)
+	},
+	URL_FETCH_IP_DAILY_LIMIT: {
+		description: 'Pages one IP address may add per day, across visitors.',
+		schema: (value) => positiveInt(value, 100)
+	},
 	SOURCE_VERIFICATION: {
 		description:
 			'Verify cited references against real pages with a web search after the analysis: off, signed-in (signed-in users only) or all. Each verification costs about a cent.',

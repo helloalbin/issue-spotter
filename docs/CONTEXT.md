@@ -78,6 +78,7 @@ There is no user table and nothing user-written is persisted. The only stored da
 | `src/lib/firebase.ts` | Browser-only Firebase Auth setup. Loaded with a dynamic import, only when Firebase is configured. |
 | `src/routes/api/me/+server.ts` | `GET /api/me`: the current user (or null) and their remaining searches. |
 | `src/lib/spotter.ts` | Shared (client and server): constants, result and event types, the legal-vocabulary heuristic. |
+| `src/lib/server/deadline.ts` | `Deadline`: idle and total time limits for one provider call, combined with the user's abort signal. Has tests. |
 | `src/lib/server/section-stream.ts` | `SectionParser`: reads the streamed JSON reply and reports each finished entry and section. Has tests. |
 | `src/lib/server/quota.ts` | D1 quota functions: `reserve`, `release`, `peek`. |
 | `src/env.ts` | Declares env vars and defaults with `defineEnvVars`. |
@@ -99,7 +100,8 @@ There is no user table and nothing user-written is persisted. The only stored da
 5. **Analysis (streamed).** `stage: analyzing`, then the call runs with `stream: true`. `SectionParser` (`src/lib/server/section-stream.ts`) reads the model's JSON as it arrives and the server sends an `item` as each entry completes (normalized and capped at 8 per section, 6 acts) and a `sectionDone` as each array closes. The key order in the system prompt (issues, doctrines, precedents, acts) is the order the UI fills in. When the reply ends, the whole text is parsed and normalized into `SpotterResult` and sent as `result`, which is the source of truth. A provider that ignores `stream` and answers in one JSON body still works: the items arrive together.
 6. **Refunds.** A provider error refunds the search. A `notLegal` rejection is free up to `QUOTA_REJECTION_MULTIPLIER` times the daily limits, then it counts.
 7. Mid-stream failures arrive as an `{error}` event, not a status code.
-8. **Cancel.** If the client aborts (the Stop button), the stream's `cancel()` aborts the upstream provider request, so generation and cost stop. The search is **not** refunded, because the provider already did part of the work. The server logs `{"event":"search_cancelled"}`.
+8. **Timeouts.** Each provider call runs under a `Deadline` (`src/lib/server/deadline.ts`). The analysis must produce a response or a new chunk within `PROVIDER_IDLE_TIMEOUT_MS` and finish within `ANALYSIS_TOTAL_TIMEOUT_MS`; the classifier gets `CLASSIFIER_TIMEOUT_MS`. A stalled or overrunning analysis aborts the upstream request, **refunds the search** and sends `{error: "The model provider took too long to respond. Please try again."}`. A classifier timeout fails open like any classifier error. The user's own Stop is not a timeout and is not refunded.
+9. **Cancel.** If the client aborts (the Stop button), the stream's `cancel()` aborts the upstream provider request, so generation and cost stop. The search is **not** refunded, because the provider already did part of the work. The server logs `{"event":"search_cancelled"}`.
 
 The classifier **fails open**: if it errors or answers unclearly, the analysis proceeds. Blocking a valid case is worse than one extra call.
 
@@ -151,6 +153,9 @@ Every model call logs one structured line: `{"event":"llm_usage","call":"classif
 | `QUOTA_SALT` | **production** | `dev-salt` in dev only | Salt for hashed IPs. A missing value in production returns 500. |
 | `CLASSIFIER_MAX_TOKENS` | no | 8 | Output cap for the classifier call. |
 | `ANALYSIS_MAX_TOKENS` | no | 2000 | Output cap for the analysis call. |
+| `CLASSIFIER_TIMEOUT_MS` | no | 8000 | Longest the classifier call may take. On a timeout it fails open and the analysis proceeds. |
+| `PROVIDER_IDLE_TIMEOUT_MS` | no | 20000 | Longest the analysis call may go without a response or a new chunk. |
+| `ANALYSIS_TOTAL_TIMEOUT_MS` | no | 90000 | Longest the whole analysis call may take, even while it keeps streaming. |
 
 Where to set them:
 - `npm run dev` reads **`.env`**.
@@ -224,11 +229,11 @@ Open decisions before deploy: canonical host (bare domain, with `www` redirected
 ## Known issues and open work
 
 1. **Hallucinated citations.** Precedents and sections are model output with no verification. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
-2. **Little test coverage.** Only `SectionParser` has tests. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
+2. **Little test coverage.** Only `SectionParser` and `Deadline` have tests. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
 3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The privacy and terms pages exist, so the consent screen can link to them. The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
 3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.
-4. **No timeout or retry** on the upstream model `fetch`. A stalled provider leaves the stream open.
+4. **No retry** on the upstream model call. A timeout is refunded and reported, but the user has to press Spot issues again. Retrying once on a connection failure is a possible next step.
 5. **README is stale.** It omits quota, the classifier, `acts`, Cloudflare and the env vars.
 6. **Privacy and terms need legal review** before public launch. They are plain-language drafts. They name no operating entity and carry no governing-law or venue clause, and the privacy page says "an AI model provider" without naming it. Update `LEGAL_UPDATED` in `src/lib/site.ts` when the text changes.
 7. **`npm audit`:** low-severity advisories reported earlier under the previous adapter. Recheck.

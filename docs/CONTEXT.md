@@ -2,7 +2,7 @@
 
 Case Law "Issue Spotter" for law students and junior advocates. The user pastes a raw, unformatted factual summary of a hypothetical case. The app returns the primary legal issues, relevant doctrines, landmark precedents, and applicable statutes (acts and sections). It is a learning aid, not legal advice.
 
-Status: working POC, not yet deployed. Anonymous users get a daily free quota, and signed-in users (Google, via Firebase Auth) get a larger per-account quota. Tiers and credits are decided but not built (see Roadmap).
+Status: working POC, not yet deployed, kept stealth (crawlers disallowed). Anonymous users get a daily free quota, and signed-in users (Google, via Firebase Auth) get a larger per-account quota. Sign-in is verified end to end with the real Firebase project. Tiers and credits are decided but not built (see Roadmap). The production domain is `legalspotter.com`.
 
 ## Domain language
 
@@ -186,7 +186,7 @@ Decided, in build order:
 1. Done: Cloudflare adapter, D1, Wrangler config.
 2. Done: token usage logging.
 3. Done: anonymous daily quota (5 per day, no tier features).
-4. Done (built and tested against the emulator): **Firebase Auth** with Google sign-in. Workers cannot run the Firebase Admin SDK, so the server verifies ID tokens itself (JWT, Web Crypto). Still to do: create the real Firebase project and try the real Google popup.
+4. Done (tested with the emulator and with a real Google account): **Firebase Auth** with Google sign-in. Workers cannot run the Firebase Admin SDK, so the server verifies ID tokens itself (JWT, Web Crypto).
 5. Next: **Tiers** for signed-in users, differing by depth of analysis: **Investigative** (current output) and **Research** (deeper: larger output cap, more items, possibly a stronger model). Anonymous users get neither.
 6. **Credits and payments.** Credits cost the user more than the token cost to the app (margin), metered from `llm_usage`. Sell "analyses", not raw tokens. Stripe or Razorpay, undecided. Ledger in D1, atomic and idempotent, with refunds on failure.
 
@@ -194,12 +194,24 @@ Hosting history: Vercel was considered and dropped. Cloudflare allows commercial
 
 Cost safeguards: set a hard monthly spend cap in the model provider's billing settings before any public deploy. Per-IP and per-cookie limits do not stop a determined multi-device user.
 
+## Accounts and infrastructure
+
+| What | State |
+| --- | --- |
+| Domain `legalspotter.com` | Registered at GoDaddy. DNS is on Cloudflare (Free plan, Full setup). Parking records were removed; no web records yet, because the Worker is not deployed. |
+| Email | Cloudflare Email Routing: `org@legalspotter.com` and a catch-all both forward to the owner's inbox. Receive-only. |
+| Firebase project | `legalspotter-be82f`, Spark plan, Google provider only, web app registered. Authorized domains: localhost, the two Firebase defaults, `legalspotter.com`, `www.legalspotter.com`. Public web config is in the local `.env` (not committed). |
+| Cloudflare Worker, D1, secrets | Not created yet. |
+| Model provider spend cap | Not set yet. Set it before the first deploy. |
+
+Open decisions before deploy: canonical host (bare domain, with `www` redirected to it, because the anonymous quota cookie is per host), and when to lift the stealth settings (`static/robots.txt` and the `noindex` meta tag in `src/app.html`).
+
 ## Known issues and open work
 
 1. **Hallucinated citations.** Precedents and sections are model output with no verification. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
 2. **No tests.** `quota.ts`, `looksLegal` and the normalizers are pure or small and are the first candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
-3a. **Sign-in is not tried against real Firebase.** It was tested with the Auth emulator and test keys only. The real project (Google provider enabled, web app registered, deployed domain under authorized domains) does not exist yet.
+3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
 3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.
 4. **No timeout or retry** on the upstream model `fetch`. A stalled provider leaves the stream open.
 5. **README is stale.** It omits quota, the classifier, `acts`, Cloudflare and the env vars.

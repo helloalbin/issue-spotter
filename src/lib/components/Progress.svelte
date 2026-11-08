@@ -15,16 +15,22 @@
 	let { stage, streamed, closed, followUp = false, skills = [] }: Props = $props();
 
 	const everySection = [
+		{ key: 'update', label: 'Comparing with your earlier analysis', followUp: true },
 		{ key: 'summary', label: 'Summarizing the case', skill: 'summarize' },
 		{ key: 'issues', label: 'Identifying primary legal issues' },
 		{ key: 'doctrines', label: 'Matching governing doctrines' },
 		{ key: 'precedents', label: 'Finding landmark precedents' },
 		{ key: 'acts', label: 'Locating applicable acts & sections' },
-		{ key: 'counterArguments', label: 'Preparing counter-arguments', skill: 'counter-arguments' }
+		{ key: 'counterArguments', label: 'Preparing counter-arguments', skill: 'counter-arguments' },
+		{ key: 'openQuestions', label: 'Noting what is still unknown', followUp: true }
 	] as const;
 
 	// A skill's step is shown only when that skill is on.
-	let sections = $derived(everySection.filter((section) => !('skill' in section) || skills.includes(section.skill)));
+	let sections = $derived(
+		everySection.filter((section) =>
+			'skill' in section ? skills.includes(section.skill) : 'followUp' in section ? followUp : true
+		)
+	);
 
 	type State = 'done' | 'active' | 'pending';
 

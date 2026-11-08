@@ -88,6 +88,7 @@
 			<AnalysisResult
 				{exchange}
 				{index}
+				previous={index > 0 ? workspace.thread[index - 1].result : null}
 				turns={workspace.turns.slice(0, index + 1)}
 				isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
 				onEdit={() => workspace.editLast()}

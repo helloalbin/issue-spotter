@@ -2,7 +2,14 @@ import { auth } from '#lib/auth.svelte.js';
 import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
 import { SAMPLES } from '#lib/samples.js';
 import type { ActiveSkill } from '#lib/skills.js';
-import { MAX_ATTACHMENTS, MAX_CONTEXT_CHARS, MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
+import {
+	MAX_ATTACHMENTS,
+	MAX_CONTEXT_CHARS,
+	MAX_FACTS,
+	MIN_FACTS,
+	looksLegal,
+	previousOf
+} from '#lib/spotter.js';
 import type {
 	AnalysisMeta,
 	Attachment,
@@ -33,7 +40,16 @@ export type Exchange = {
 };
 
 function emptyStreamed(): Streamed {
-	return { summary: [], counterArguments: [], issues: [], doctrines: [], precedents: [], acts: [] };
+	return {
+		update: [],
+		openQuestions: [],
+		summary: [],
+		counterArguments: [],
+		issues: [],
+		doctrines: [],
+		precedents: [],
+		acts: []
+	};
 }
 
 /**
@@ -244,6 +260,11 @@ class Workspace {
 				sources: {},
 				verification: 'idle',
 				result: {
+					...(typeof event.result?.headline === 'string' && { headline: event.result.headline }),
+					...(Array.isArray(event.result?.update) && { update: event.result.update }),
+					...(Array.isArray(event.result?.openQuestions) && {
+						openQuestions: event.result.openQuestions
+					}),
 					...(Array.isArray(event.result?.summary) && { summary: event.result.summary }),
 					...(Array.isArray(event.result?.counterArguments) && {
 						counterArguments: event.result.counterArguments
@@ -331,6 +352,8 @@ class Workspace {
 				body: JSON.stringify({
 					facts: text,
 					skills: this.runSkills,
+					// With an analysis already on screen this is an update, so the earlier one goes along.
+					...(this.latest && { previous: previousOf(this.latest.result) }),
 					context: this.attachments.map(({ url, title, text, truncated }) => ({
 						url,
 						title,

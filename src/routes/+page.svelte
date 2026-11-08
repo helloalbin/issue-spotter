@@ -10,6 +10,15 @@
 	import type { Auth } from 'firebase/auth';
 	import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 	import type { QuotaInfo, SpotEvent, SpotterResult } from '#lib/spotter.js';
+	import AnalysisResult from '#lib/components/AnalysisResult.svelte';
+	import Button from '#lib/components/Button.svelte';
+	import Icon from '#lib/components/Icon.svelte';
+	import Progress from '#lib/components/Progress.svelte';
+	import Sidebar from '#lib/components/Sidebar.svelte';
+	import SignInDialog from '#lib/components/SignInDialog.svelte';
+	import ThemeToggle from '#lib/components/ThemeToggle.svelte';
+	import { SAMPLES } from '#lib/samples.js';
+	import { SITE_NAME } from '#lib/site.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -20,10 +29,11 @@
 	// The emulator is a development tool and is never used in a production build.
 	const emulatorUrl = import.meta.env.PROD ? undefined : FIREBASE_AUTH_EMULATOR_URL;
 
-	const SAMPLE_FACTS =
-		'A tenant slipped on a wet staircase in a rented apartment building after repeated written complaints to the landlord about the leak. The tenant suffered a fractured ankle and missed two months of work.';
-
 	let facts = $state('');
+	// The facts behind the analysis on screen. The composer is emptied once a result arrives.
+	let submittedFacts = $state('');
+	let menuOpen = $state(false);
+	let signInOpen = $state(false);
 	let isLoading = $state(false);
 	let errorMessage = $state('');
 	let notice = $state('');
@@ -68,19 +78,6 @@
 			: 'later today'
 	);
 	let showContextTip = $derived(facts.trim().length >= 40 && !looksLegal(facts));
-	let statusText = $derived(
-		stage === 'verifying'
-			? 'Checking that this is a legal fact pattern…'
-			: stage === 'analyzing'
-				? 'Spotting issues, doctrines, precedents and acts…'
-				: ''
-	);
-	let summary = $derived(
-		result
-			? `${result.issues.length} issues · ${result.doctrines.length} doctrines · ${result.precedents.length} precedents · ${result.acts.length} acts`
-			: ''
-	);
-
 	/** The Firebase ID token (refreshed by the SDK when needed) as a request header, if signed in. */
 	async function authHeaders(): Promise<Record<string, string>> {
 		const token = await auth?.currentUser?.getIdToken();
@@ -117,8 +114,8 @@
 		if (firebase && auth) await firebase.signOut(auth);
 	}
 
-	function fillSample() {
-		facts = SAMPLE_FACTS;
+	function fillSample(sampleFacts: string) {
+		facts = sampleFacts;
 		errorMessage = '';
 		notice = '';
 	}
@@ -128,6 +125,18 @@
 		errorMessage = '';
 		notice = '';
 		result = null;
+		submittedFacts = '';
+	}
+
+	function newAnalysis() {
+		clearAll();
+		menuOpen = false;
+	}
+
+	/** Puts the analysed facts back in the composer for editing. */
+	function editFacts() {
+		facts = submittedFacts;
+		result = null;
 	}
 
 	function handleEvent(event: SpotEvent) {
@@ -136,6 +145,8 @@
 		} else if ('stage' in event) {
 			stage = event.stage;
 		} else if ('result' in event) {
+			submittedFacts = facts;
+			facts = '';
 			result = {
 				issues: Array.isArray(event.result?.issues) ? event.result.issues : [],
 				doctrines: Array.isArray(event.result?.doctrines) ? event.result.doctrines : [],
@@ -223,272 +234,196 @@
 </script>
 
 <svelte:head>
-	<title>Case Law Issue Spotter</title>
+	<title>{SITE_NAME}</title>
 	<meta
 		name="description"
 		content="Paste hypothetical case facts and get likely legal issues, doctrines, landmark precedents, and applicable acts with sections."
 	/>
 </svelte:head>
 
-<main class="min-h-screen bg-stone-200/60 px-4 py-10 text-stone-900">
-	<div class="mx-auto max-w-6xl">
-		<header class="overflow-hidden rounded-xl bg-stone-900 text-stone-50 shadow-md">
-			<div class="px-6 py-8 sm:px-10">
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<p
-						class="inline-block rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-300"
-					>
-						For law students &middot; learning aid, not legal advice
-					</p>
-					{#if authConfigured}
-						<div class="flex items-center gap-3 text-xs text-stone-300">
-							{#if user}
-								<span>{user.name ?? user.email}</span>
-								<button
-									type="button"
-									onclick={signOutUser}
-									class="rounded-lg border border-stone-600 px-3 py-1.5 transition hover:bg-stone-800"
-								>
-									Sign out
-								</button>
-							{:else}
-								<button
-									type="button"
-									onclick={signIn}
-									disabled={!authReady || signingIn}
-									class="rounded-lg border border-stone-600 px-3 py-1.5 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
-								>
-									{signingIn ? 'Signing in…' : 'Sign in with Google'}
-								</button>
-							{/if}
-						</div>
-					{/if}
-				</div>
-				<h1 class="mt-3 text-3xl font-semibold tracking-tight">Case Law Issue Spotter</h1>
-				<p class="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
-					Paste a raw case summary. The assistant identifies likely legal issues, governing
-					doctrines, landmark precedents, and the acts and sections a student should reach for
-					first.
-				</p>
-			</div>
-		</header>
+{#snippet messages()}
+	{#if errorMessage}
+		<p
+			role="alert"
+			class="type-body rounded-lg border border-danger-border bg-danger-subtle p-3 text-danger"
+		>
+			{errorMessage}
+		</p>
+	{/if}
 
-		<div class="mt-6 rounded-xl border border-stone-300 bg-white p-6 shadow-sm sm:p-8">
-			<form class="space-y-4" onsubmit={submitCase}>
-				<div class="flex items-baseline justify-between gap-4">
-					<label for="facts" class="text-sm font-semibold">Case facts</label>
-					<span class="text-xs tabular-nums" class:text-red-700={overLimit} class:text-stone-500={!overLimit}>
-						{charCount.toLocaleString()} / {MAX_FACTS.toLocaleString()}
-					</span>
-				</div>
-				<textarea
-					id="facts"
-					bind:value={facts}
-					required
-					rows="8"
-					class="w-full rounded-lg border border-stone-300 bg-white p-3 text-sm leading-6 outline-none transition placeholder:text-stone-400 focus:border-stone-500 focus:ring-2 focus:ring-stone-900/10"
-					placeholder="Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord..."
-				></textarea>
-				{#if showContextTip}
-					<p class="text-xs leading-5 text-stone-500">
-						Tip: say who did what to whom, and what harm, dispute or right is at stake. Legal
-						context helps the spotter find the right issues.
-					</p>
-				{/if}
-
-				<div class="flex flex-wrap items-center gap-2">
-					<button
-						type="submit"
-						disabled={isLoading || overLimit || outOfSearches}
-						class="rounded-lg bg-stone-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
-					>
-						{isLoading ? 'Analyzing…' : 'Spot issues'}
-					</button>
-					<button
-						type="button"
-						onclick={fillSample}
-						class="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-700 transition hover:bg-stone-100"
-					>
-						Use sample facts
-					</button>
-					<button
-						type="button"
-						onclick={clearAll}
-						class="rounded-lg px-4 py-2 text-sm text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-					>
-						Clear
-					</button>
-					{#if quota}
-						<span class="ml-auto text-xs tabular-nums text-stone-500">
-							{quota.remaining} of {quota.limit}
-							{quota.signedIn ? '' : 'free '}searches left today
-						</span>
-					{/if}
-				</div>
-			</form>
-
-			{#if errorMessage}
-				<p
-					role="alert"
-					class="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800"
+	{#if outOfSearches}
+		<p class="type-body rounded-lg border border-border-default bg-surface-2 p-3 text-text-secondary">
+			{#if quota?.signedIn}
+				You have used today's {quota.limit} searches. They reset at {resetTime}. Your text is kept,
+				and credits are coming soon.
+			{:else if authConfigured}
+				You have used today's {quota?.limit} free searches. They reset at {resetTime}. Your text is
+				kept.
+				<button
+					type="button"
+					onclick={() => (signInOpen = true)}
+					class="underline hover:text-text-primary"
 				>
-					{errorMessage}
-				</p>
+					Sign in with Google for more.
+				</button>
+			{:else}
+				You have used today's {quota?.limit} free searches. They reset at {resetTime}. Your text is
+				kept, and more access is coming soon.
 			{/if}
+		</p>
+	{/if}
 
-			{#if outOfSearches}
-				<p class="mt-4 rounded-lg border border-stone-300 bg-stone-100 p-3 text-sm text-stone-700">
-					{#if quota?.signedIn}
-						You have used today's {quota.limit} searches. They reset at {resetTime}. Your text is
-						kept, and credits are coming soon.
-					{:else if authConfigured}
-						You have used today's {quota?.limit} free searches. They reset at {resetTime}. Sign in
-						with Google for more. Your text is kept.
-					{:else}
-						You have used today's {quota?.limit} free searches. They reset at {resetTime}. Your text
-						is kept, and more access is coming soon.
-					{/if}
-				</p>
+	<div role="status" aria-live="polite">
+		{#if notice}
+			<p class="type-body rounded-lg border border-border-default bg-surface-2 p-3 text-text-secondary">
+				{notice}
+			</p>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet composer(docked: boolean)}
+	<form
+		onsubmit={submitCase}
+		class="rounded-2xl border border-border-default bg-surface-1 p-4 shadow-raised focus-within:border-border-strong"
+	>
+		<label for="facts" class="sr-only">Case facts</label>
+		<textarea
+			id="facts"
+			name="facts"
+			bind:value={facts}
+			readonly={isLoading}
+			required
+			autocomplete="off"
+			rows={docked ? 2 : 5}
+			placeholder={docked
+				? 'Paste new facts to start another analysis…'
+				: 'Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord about a broken light and a leaking pipe…'}
+			class="type-body w-full resize-none bg-transparent text-text-primary outline-none"
+		></textarea>
+
+		<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+			<span class="type-meta tabular-nums {overLimit ? 'text-danger' : 'text-text-tertiary'}">
+				{isLoading ? 'Context locked' : `${charCount.toLocaleString()} / ${MAX_FACTS.toLocaleString()}`}
+			</span>
+			{#if quota}
+				<span class="text-caption tabular-nums text-text-tertiary">
+					{quota.remaining} of {quota.limit}
+					{quota.signedIn ? '' : 'free '}searches left today
+				</span>
 			{/if}
+			<span class="ml-auto flex items-center gap-2">
+				<Button variant="ghost" onclick={clearAll}>Clear</Button>
+				<Button variant="primary" type="submit" disabled={isLoading || overLimit || outOfSearches}>
+					{isLoading ? 'Analyzing…' : 'Spot issues'}
+				</Button>
+			</span>
+		</div>
+	</form>
 
-			<div role="status" aria-live="polite">
-				{#if statusText}
-					<p class="mt-4 text-sm text-stone-600">{statusText}</p>
-				{/if}
-				{#if notice}
-					<p class="mt-4 rounded-lg border border-stone-300 bg-stone-100 p-3 text-sm text-stone-700">
-						{notice}
-					</p>
-				{/if}
-			</div>
+	{#if showContextTip}
+		<p class="mt-3 text-caption text-text-tertiary">
+			Tip: say who did what to whom, and what harm, dispute or right is at stake. Legal context
+			helps the spotter find the right issues.
+		</p>
+	{/if}
+{/snippet}
+
+<a
+	href="#main"
+	class="sr-only rounded-md bg-btn px-3 py-2 text-btn-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
+>
+	Skip to content
+</a>
+
+<div class="flex h-dvh overflow-hidden bg-bg">
+	<Sidebar
+		open={menuOpen}
+		{user}
+		{authConfigured}
+		onNew={newAnalysis}
+		onClose={() => (menuOpen = false)}
+		onSignIn={() => {
+			menuOpen = false;
+			signInOpen = true;
+		}}
+		onSignOut={signOutUser}
+	/>
+
+	<div class="flex min-w-0 flex-1 flex-col">
+		<div class="flex items-center justify-between px-4 py-3">
+			<button
+				type="button"
+				onclick={() => (menuOpen = true)}
+				aria-label="Open menu"
+				aria-controls="sidebar"
+				aria-expanded={menuOpen}
+				class="grid size-9 place-items-center rounded-lg border border-border-default bg-surface-2 text-text-secondary hover:text-text-primary md:hidden"
+			>
+				<Icon name="menu" />
+			</button>
+			<span class="ml-auto"><ThemeToggle /></span>
 		</div>
 
-		{#if isLoading}
-			<div class="mt-6 grid gap-4 md:grid-cols-3" aria-hidden="true">
-				{#each ['Issues', 'Doctrines', 'Precedents'] as label}
-					<div class="rounded-xl border border-stone-300 bg-white p-5 shadow-sm">
-						<div class="h-4 w-24 animate-pulse rounded bg-stone-200"></div>
-						<div class="mt-4 space-y-2">
-							<div class="h-3 animate-pulse rounded bg-stone-100"></div>
-							<div class="h-3 w-11/12 animate-pulse rounded bg-stone-100"></div>
-							<div class="h-3 w-4/5 animate-pulse rounded bg-stone-100"></div>
+		<main id="main" class="flex-1 overflow-y-auto">
+			{#if isLoading}
+				<Progress {stage} />
+			{:else if result}
+				<AnalysisResult facts={submittedFacts} {result} onEdit={editFacts} />
+			{:else}
+				<div class="mx-auto flex min-h-full w-full max-w-2xl flex-col px-6 pb-6">
+					<div class="my-auto py-10">
+						<h1 class="type-h1 text-center">What are the facts?</h1>
+						<p class="type-lead mx-auto mt-3 max-w-xl text-center text-text-secondary">
+							Paste a case summary and {SITE_NAME} surfaces the likely legal issues, governing
+							doctrines, landmark precedents, and the acts and sections to check.
+						</p>
+
+						<div class="mt-8">{@render composer(false)}</div>
+						<div class="mt-3 space-y-3">{@render messages()}</div>
+
+						<div class="mt-6 flex flex-wrap items-center justify-center gap-2">
+							<span class="text-caption text-text-tertiary">Try a sample</span>
+							{#each SAMPLES as sample}
+								<button
+									type="button"
+									onclick={() => fillSample(sample.facts)}
+									class="rounded-pill border border-border-default px-3 py-1.5 text-sm text-text-tertiary transition hover:bg-surface-2 hover:text-text-primary"
+								>
+									{sample.label}
+								</button>
+							{/each}
 						</div>
-						<span class="sr-only">Loading {label}…</span>
 					</div>
-				{/each}
+
+					<footer class="text-center text-caption text-text-tertiary">
+						Study aid for issue-spotting practice. Always verify sections and precedents against
+						primary sources. Model output can be incomplete or out of date.
+						<span class="mt-1 block">
+							<a href="/privacy" class="underline hover:text-text-primary">Privacy</a>
+							·
+							<a href="/terms" class="underline hover:text-text-primary">Terms</a>
+						</span>
+					</footer>
+				</div>
+			{/if}
+		</main>
+
+		{#if isLoading || result}
+			<div class="border-t border-border-subtle px-6 py-4">
+				<div class="mx-auto w-full max-w-3xl">
+					{@render composer(true)}
+					<div class="mt-3 space-y-3">{@render messages()}</div>
+				</div>
 			</div>
 		{/if}
-
-		{#if result && !isLoading}
-			<p class="mt-6 text-sm text-stone-600">{summary}</p>
-
-			<section class="mt-3 grid gap-4 md:grid-cols-3">
-				<article class="rounded-xl border border-stone-300 border-t-4 border-t-stone-900 bg-white p-5 shadow-sm">
-					<div class="flex items-center justify-between">
-						<h2 class="text-sm font-semibold">Primary legal issues</h2>
-						<span class="rounded-full bg-stone-900 px-2 py-0.5 text-xs font-medium text-white">
-							{result.issues.length}
-						</span>
-					</div>
-					{#if result.issues.length > 0}
-						<ol class="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-stone-800">
-							{#each result.issues as item}
-								<li>{item}</li>
-							{/each}
-						</ol>
-					{:else}
-						<p class="mt-3 text-sm text-stone-500">No distinct issues identified.</p>
-					{/if}
-				</article>
-
-				<article class="rounded-xl border border-stone-300 border-t-4 border-t-amber-700 bg-white p-5 shadow-sm">
-					<div class="flex items-center justify-between">
-						<h2 class="text-sm font-semibold">Relevant doctrines</h2>
-						<span class="rounded-full bg-amber-700 px-2 py-0.5 text-xs font-medium text-white">
-							{result.doctrines.length}
-						</span>
-					</div>
-					{#if result.doctrines.length > 0}
-						<ul class="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-stone-800">
-							{#each result.doctrines as item}
-								<li>{item}</li>
-							{/each}
-						</ul>
-					{:else}
-						<p class="mt-3 text-sm text-stone-500">No doctrines identified.</p>
-					{/if}
-				</article>
-
-				<article class="rounded-xl border border-stone-300 border-t-4 border-t-stone-500 bg-white p-5 shadow-sm">
-					<div class="flex items-center justify-between">
-						<h2 class="text-sm font-semibold">Landmark precedents</h2>
-						<span class="rounded-full bg-stone-500 px-2 py-0.5 text-xs font-medium text-white">
-							{result.precedents.length}
-						</span>
-					</div>
-					{#if result.precedents.length > 0}
-						<ul class="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-stone-800">
-							{#each result.precedents as item}
-								<li>{item}</li>
-							{/each}
-						</ul>
-					{:else}
-						<p class="mt-3 text-sm text-stone-500">No precedents identified.</p>
-					{/if}
-				</article>
-			</section>
-
-			<section class="mt-4 rounded-xl border border-stone-300 bg-white p-5 shadow-sm sm:p-6">
-				<div class="flex flex-wrap items-center justify-between gap-2">
-					<div>
-						<h2 class="text-base font-semibold">Applicable acts &amp; sections</h2>
-						<p class="mt-1 text-sm text-stone-600">
-							Statutes worth opening first — check the exact section wording in a bare act before citing.
-						</p>
-					</div>
-					<span class="rounded-full bg-stone-900 px-2.5 py-1 text-xs font-medium text-white">
-						{result.acts.length} {result.acts.length === 1 ? 'act' : 'acts'}
-					</span>
-				</div>
-
-				{#if result.acts.length > 0}
-					<div class="mt-4 grid gap-4 lg:grid-cols-2">
-						{#each result.acts as entry}
-							<article class="rounded-lg bg-stone-100/70 p-4 ring-1 ring-stone-200">
-								<h3 class="text-sm font-semibold leading-6">{entry.act}</h3>
-								{#if entry.relevance}
-									<p class="mt-1 text-sm leading-6 text-stone-700">{entry.relevance}</p>
-								{/if}
-								{#if entry.sections.length > 0}
-									<ul class="mt-3 flex flex-wrap gap-1.5">
-										{#each entry.sections as section}
-											<li
-												class="rounded-md border border-stone-300 bg-white px-2 py-1 font-mono text-xs text-stone-800"
-											>
-												{section}
-											</li>
-										{/each}
-									</ul>
-								{:else}
-									<p class="mt-2 text-xs text-stone-500">Sections not specified — read the act for the closest provision.</p>
-								{/if}
-							</article>
-						{/each}
-					</div>
-				{:else}
-					<p
-						class="mt-4 rounded-lg border border-dashed border-stone-300 bg-stone-50 p-4 text-sm text-stone-600"
-					>
-						No specific statute identified for these facts. The issues above may turn on case law
-						and general principles instead.
-					</p>
-				{/if}
-			</section>
-		{/if}
-
-		<footer class="mt-8 pb-4 text-center text-xs leading-5 text-stone-500">
-			Study aid for issue-spotting practice. Always verify sections and precedents against primary
-			sources — model output can be incomplete or out of date.
-		</footer>
 	</div>
-</main>
+</div>
+
+<SignInDialog
+	open={signInOpen}
+	ready={authReady}
+	{signingIn}
+	onSignIn={signIn}
+	onClose={() => (signInOpen = false)}
+/>

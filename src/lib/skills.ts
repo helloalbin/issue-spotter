@@ -1,13 +1,16 @@
 import type { IconName } from '#lib/icons.js';
 
-/** The skills that change the analysis today. The rest are drawn in the drawer but not built. */
+/**
+ * The skills that change the analysis today. Deep research is a separate job with its own switch
+ * (`workspace.researchMode`), and the rest are drawn in the drawer but not built.
+ */
 export type ActiveSkill = 'summarize' | 'counter-arguments' | 'draft';
 
 export type SkillId = ActiveSkill | 'draft' | 'deep-research' | 'compare-cases' | 'verify-cites';
 
 export const SKILLS: { id: SkillId; label: string; icon: IconName; available: boolean }[] = [
 	{ id: 'draft', label: 'Draft', icon: 'squarePen', available: true },
-	{ id: 'deep-research', label: 'Deep research', icon: 'telescope', available: false },
+	{ id: 'deep-research', label: 'Deep research', icon: 'telescope', available: true },
 	{ id: 'compare-cases', label: 'Compare cases', icon: 'gitCompare', available: false },
 	{ id: 'counter-arguments', label: 'Counter-args', icon: 'swords', available: true },
 	{ id: 'verify-cites', label: 'Verify cites', icon: 'badgeCheck', available: false },

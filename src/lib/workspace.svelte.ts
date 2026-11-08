@@ -15,6 +15,8 @@ import type {
 	AnalysisMeta,
 	Attachment,
 	QuotaInfo,
+	ResearchBrief,
+	ResearchEvent,
 	SpotEvent,
 	SourceMatch,
 	SpotSection,
@@ -47,7 +49,14 @@ export type AnalysisExchange = ExchangeBase & {
 /** A file sent with no message: the app says what it understood and asks what to do next. */
 export type ReadingExchange = ExchangeBase & { kind: 'reading' };
 
-export type Exchange = AnalysisExchange | ReadingExchange;
+/** A deep research brief on a topic within the case. It adds nothing to the case text. */
+export type ResearchExchange = ExchangeBase & {
+	kind: 'research';
+	topic: string;
+	brief: ResearchBrief;
+};
+
+export type Exchange = AnalysisExchange | ReadingExchange | ResearchExchange;
 
 /** What the app offers to do after reading a file the user sent on its own. */
 export type NextAction = {
@@ -121,6 +130,13 @@ class Workspace {
 	closed = $state<SpotSection[]>([]);
 	/** The verification pane beside the results. */
 	paneOpen = $state(true);
+	/** Whether the next message is a topic to research in depth instead of facts to analyse. */
+	researchMode = $state(false);
+	/** Deep research runs in progress, which is a different job from analysing. */
+	researching = $state(false);
+	researchStage = $state<'checking' | 'searching' | null>(null);
+	/** Remaining deep research this month; the value loaded with the page until a run updates it. */
+	researchQuota = $state<QuotaInfo | null>(null);
 
 	/** The most recent analysis, which the verification pane describes. */
 	latest = $derived(this.#analysisAt(this.thread.length - 1));
@@ -207,6 +223,9 @@ class Workspace {
 		this.errorMessage = '';
 		this.notice = '';
 		this.thread = [];
+		this.researchMode = false;
+		this.researching = false;
+		this.researchStage = null;
 		this.draftAttachments = [];
 		this.urlError = '';
 		this.fileError = '';
@@ -215,6 +234,14 @@ class Workspace {
 
 	toggleSkill(skill: ActiveSkill) {
 		this.skills = toggleSkills(this.skills, skill);
+	}
+
+	/** Deep research needs a case to dig into, so it can only be switched on once there is one. */
+	toggleResearch() {
+		if (!this.researchMode && !this.followUp) return;
+		this.researchMode = !this.researchMode;
+		this.errorMessage = '';
+		this.notice = '';
 	}
 
 	/**
@@ -360,7 +387,12 @@ class Workspace {
 	editLast() {
 		const last = this.thread.pop();
 		if (!last) return;
-		this.facts = last.added;
+		if (last.kind === 'research') {
+			this.facts = last.topic;
+			this.researchMode = true;
+		} else {
+			this.facts = last.added;
+		}
 		this.draftAttachments = last.attachments;
 		this.errorMessage = '';
 		this.notice = '';
@@ -461,6 +493,7 @@ class Workspace {
 		if (this.isLoading) return;
 		this.errorMessage = '';
 		this.notice = '';
+		if (this.researchMode) return this.#research();
 
 		// With a conversation on screen, what is typed continues that case instead of starting a new one.
 		const added = this.facts;
@@ -586,6 +619,100 @@ class Workspace {
 				if (latest?.kind === 'analysis' && latest.verification === 'running') {
 					latest.verification = 'done';
 				}
+			}
+		}
+	}
+	/** Deep research on a topic within the case, using the case so far as its background. */
+	async #research() {
+		const topic = this.facts.trim();
+		if (topic.length < 10) {
+			this.errorMessage = 'Say what to research in a few more words.';
+			return;
+		}
+		if (!this.latest) {
+			this.errorMessage = 'Spot the issues in a case first, then research a point within it.';
+			return;
+		}
+
+		this.isLoading = true;
+		this.researching = true;
+		this.researchStage = 'checking';
+		this.pending = topic;
+		this.#abort?.abort();
+		const run = (this.#run += 1);
+		this.#abort = new AbortController();
+		let finished = false;
+
+		try {
+			const response = await fetch('/api/research', {
+				method: 'POST',
+				signal: this.#abort.signal,
+				headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+				body: JSON.stringify({ topic, facts: caseText(this.turns, '') })
+			});
+
+			if (!response.ok || !response.body) {
+				const payload = await response.json().catch(() => null);
+				if (payload?.research) this.researchQuota = payload.research;
+				if (payload?.code === 'auth_invalid') {
+					this.errorMessage = payload.error;
+					await auth.signOut();
+				} else {
+					this.errorMessage = payload?.error ?? 'Unable to start the research right now.';
+				}
+				return;
+			}
+
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+			while (true) {
+				const { done, value } = await reader.read();
+				buffer += decoder.decode(value, { stream: !done });
+				const lines = buffer.split('\n');
+				buffer = done ? '' : (lines.pop() ?? '');
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					if (run !== this.#run) return;
+					const event: ResearchEvent = JSON.parse(line);
+					if ('research' in event) this.researchQuota = event.research;
+					else if ('stage' in event) this.researchStage = event.stage;
+					else if ('brief' in event) {
+						finished = true;
+						this.thread.push({
+							kind: 'research',
+							added: '',
+							attachments: [],
+							topic,
+							brief: event.brief
+						});
+						this.facts = '';
+						this.researchMode = false;
+					} else if ('offTopic' in event) {
+						finished = true;
+						this.notice = event.offTopic;
+					} else if ('error' in event) {
+						finished = true;
+						this.errorMessage = event.error;
+					}
+				}
+				if (done) break;
+			}
+			if (!finished) this.errorMessage = 'The research ended unexpectedly. Please try again.';
+		} catch (error) {
+			if (run !== this.#run) return;
+			if ((error as Error)?.name === 'AbortError') {
+				this.notice = 'Research stopped. Your topic is kept, and the run still counts toward this month.';
+			} else {
+				this.errorMessage = 'Network error. Please try again.';
+			}
+		} finally {
+			if (run === this.#run) {
+				this.#abort = null;
+				this.isLoading = false;
+				this.researching = false;
+				this.researchStage = null;
+				this.pending = null;
 			}
 		}
 	}

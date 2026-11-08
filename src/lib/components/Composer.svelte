@@ -7,15 +7,24 @@
 	import Button from './Button.svelte';
 	import Icon from './Icon.svelte';
 
-	type Props = { docked?: boolean; quota: QuotaInfo | null; outOfSearches: boolean };
-	let { docked = false, quota, outOfSearches }: Props = $props();
+	type Props = {
+		docked?: boolean;
+		quota: QuotaInfo | null;
+		/** Deep research is counted by the month, apart from searches. */
+		research?: QuotaInfo | null;
+		outOfSearches: boolean;
+	};
+	let { docked = false, quota, research = null, outOfSearches }: Props = $props();
+	let outOfResearch = $derived(workspace.researchMode && research !== null && research.remaining === 0);
 
 	// The primary button says what pressing it will do.
 	let fileOnly = $derived(
 		!workspace.facts.trim() && workspace.draftAttachments.some((attachment) => attachment.kind === 'file')
 	);
 	let primaryLabel = $derived(
-		fileOnly
+		workspace.researchMode
+			? 'Research'
+			: fileOnly
 			? 'Send file'
 			: workspace.skills.includes('draft')
 				? 'Draft'
@@ -24,8 +33,8 @@
 					: 'Spot issues'
 	);
 	let primaryIcon = $derived(
-		fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
-	) as 'arrowUp' | 'squarePen' | 'sparkles';
+		workspace.researchMode ? 'telescope' : fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
+	) as 'arrowUp' | 'squarePen' | 'sparkles' | 'telescope';
 
 	let drawerOpen = $state(false);
 	let drawerMaxHeight = $state(528);
@@ -153,8 +162,24 @@
 			</div>
 		{/if}
 
-		{#if workspace.skills.length > 0 || workspace.draftAttachments.length > 0 || workspace.fileStatus}
+		{#if workspace.skills.length > 0 || workspace.researchMode || workspace.draftAttachments.length > 0 || workspace.fileStatus}
 			<ul class="flex flex-wrap gap-2" aria-label="Added to this message">
+				{#if workspace.researchMode}
+					<li
+						class="inline-flex items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
+					>
+						<Icon name="telescope" size={12} class="text-accent-text" />
+						Deep research
+						<button
+							type="button"
+							onclick={() => workspace.toggleResearch()}
+							aria-label="Turn off Deep research"
+							class="grid size-4 place-items-center rounded-pill text-text-tertiary hover:text-text-primary"
+						>
+							<Icon name="x" size={11} />
+						</button>
+					</li>
+				{/if}
 				{#each workspace.skills as id}
 					{@const skill = SKILLS.find((entry) => entry.id === id)}
 					{#if skill}
@@ -253,7 +278,7 @@
 					variant="primary"
 					type="submit"
 					class="gap-[7px] px-4 py-2.5 shadow-button"
-					disabled={workspace.overLimit || outOfSearches}
+					disabled={workspace.researchMode ? outOfResearch : workspace.overLimit || outOfSearches}
 				>
 					<Icon name={primaryIcon} />
 					{primaryLabel}
@@ -267,7 +292,9 @@
 	<div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 text-caption text-text-tertiary">
 		{#if docked && !workspace.isLoading}
 			<p>
-				{#if !workspace.followUp}
+				{#if workspace.researchMode}
+					Name a point within your case to research on court and statute sites. It uses one of your deep research for the month.
+				{:else if !workspace.followUp}
 					Your message is sent with the file. It counts as one search.
 				{:else if workspace.skills.includes('draft')}
 					Your facts are added to this case and the draft is rewritten below. It counts as one search.
@@ -276,7 +303,11 @@
 				{/if}
 			</p>
 		{/if}
-		{#if quota}
+		{#if workspace.researchMode && research}
+			<p class="ml-auto tabular-nums">
+				{research.remaining} of {research.limit} deep research left this month
+			</p>
+		{:else if quota}
 			<p class="ml-auto tabular-nums">
 				{quota.remaining} of {quota.limit}
 				{quota.signedIn ? '' : 'free '}searches left today

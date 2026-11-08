@@ -13,7 +13,7 @@
 	let urlInput = $state<HTMLInputElement>();
 	let fileInput = $state<HTMLInputElement>();
 
-	let selected = $derived(workspace.skills.length);
+	let selected = $derived(workspace.skills.length + (workspace.researchMode ? 1 : 0));
 	let adding = $derived(workspace.urlStatus === 'loading');
 
 	/** Reads each chosen file in turn. The composer shows what happened to each, so the drawer closes. */
@@ -101,16 +101,24 @@
 		</div>
 		<div class="grid grid-cols-2 gap-2">
 			{#each SKILLS as skill}
-				{@const on = workspace.skills.includes(skill.id as ActiveSkill)}
+				{@const research = skill.id === 'deep-research'}
+				{@const on = research
+					? workspace.researchMode
+					: workspace.skills.includes(skill.id as ActiveSkill)}
+				{@const usable = skill.available && (!research || workspace.followUp || workspace.researchMode)}
 				<button
 					type="button"
-					disabled={!skill.available}
-					aria-pressed={skill.available ? on : undefined}
-					onclick={() => workspace.toggleSkill(skill.id as ActiveSkill)}
-					title={skill.available ? undefined : 'Coming soon'}
+					disabled={!usable}
+					aria-pressed={usable ? on : undefined}
+					onclick={() => (research ? workspace.toggleResearch() : workspace.toggleSkill(skill.id as ActiveSkill))}
+					title={!skill.available
+						? 'Coming soon'
+						: !usable
+							? 'Spot the issues in a case first, then research a point within it'
+							: undefined}
 					class="relative flex h-16 flex-col items-center justify-center gap-[7px] rounded-md border px-2 py-3 transition {on
 						? 'border-border-strong bg-surface-2 text-text-primary'
-						: 'border-border-subtle text-text-secondary'} {skill.available ? 'hover:bg-surface-2' : 'opacity-60'}"
+						: 'border-border-subtle text-text-secondary'} {usable ? 'hover:bg-surface-2' : 'opacity-60'}"
 				>
 					<Icon name={skill.icon} size={18} class={on ? 'text-accent-text' : 'text-text-tertiary'} />
 					<span class="text-caption leading-none font-medium">{skill.label}</span>

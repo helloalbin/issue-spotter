@@ -1,19 +1,14 @@
-import { json } from '@sveltejs/kit';
 import { OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL } from '$app/env/private';
+import { MAX_FACTS, MIN_FACTS } from '#lib/spotter.js';
+import type { ActReference, SpotEvent, SpotterResult } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
 
-type ActReference = {
-	act: string;
-	sections: string[];
-	relevance: string;
-};
+const CLASSIFIER_MAX_TOKENS = 8;
+const ANALYSIS_MAX_TOKENS = 2000;
 
-type SpotterResponse = {
-	issues: string[];
-	doctrines: string[];
-	precedents: string[];
-	acts: ActReference[];
-};
+const CLASSIFIER_PROMPT =
+	'Decide whether the user message describes a factual scenario that could raise legal issues ' +
+	'(a real or hypothetical case fact pattern). Answer with exactly one word: yes or no.';
 
 const SYSTEM_PROMPT =
 	'You are a legal issue-spotting assistant for law students. Return concise, educational analysis only. ' +
@@ -68,6 +63,96 @@ function normalizeActs(value: unknown): ActReference[] {
 	return acts;
 }
 
+class SpotError extends Error {}
+
+type ChatOptions = {
+	system: string;
+	user: string;
+	maxTokens: number;
+	temperature: number;
+	jsonMode?: boolean;
+};
+
+async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<string> {
+	let response: Response;
+
+	try {
+		response = await fetchFn(`${OPENAI_BASE_URL}/chat/completions`, {
+			method: 'POST',
+			headers: {
+				Authorization: ['Bearer', OPENAI_API_KEY].join(' '),
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				model: OPENAI_MODEL,
+				temperature: options.temperature,
+				max_tokens: options.maxTokens,
+				...(options.jsonMode && { response_format: { type: 'json_object' } }),
+				messages: [
+					{ role: 'system', content: options.system },
+					{ role: 'user', content: options.user }
+				]
+			})
+		});
+	} catch {
+		throw new SpotError('Unable to reach the model provider.');
+	}
+
+	if (!response.ok) {
+		console.error(`Model provider error (${response.status}):`, await response.text());
+		throw new SpotError(`Analysis request failed (${response.status}).`);
+	}
+
+	const payload = await response.json();
+	const content = payload?.choices?.[0]?.message?.content;
+
+	if (typeof content !== 'string') {
+		throw new SpotError('Model returned an empty response.');
+	}
+
+	return content;
+}
+
+/** Fails open: if the classifier errors or answers unclearly, the analysis proceeds. */
+async function isLegalFactPattern(fetchFn: typeof fetch, facts: string): Promise<boolean> {
+	try {
+		const answer = await chat(fetchFn, {
+			system: CLASSIFIER_PROMPT,
+			user: facts,
+			maxTokens: CLASSIFIER_MAX_TOKENS,
+			temperature: 0
+		});
+		return !/^\W*no\b/i.test(answer);
+	} catch {
+		return true;
+	}
+}
+
+async function analyze(fetchFn: typeof fetch, facts: string): Promise<SpotterResult> {
+	const content = await chat(fetchFn, {
+		system: SYSTEM_PROMPT,
+		user: facts,
+		maxTokens: ANALYSIS_MAX_TOKENS,
+		temperature: 0.2,
+		jsonMode: true
+	});
+
+	let parsed: Partial<SpotterResult>;
+
+	try {
+		parsed = JSON.parse(content);
+	} catch {
+		throw new SpotError('Model response was not valid JSON.');
+	}
+
+	return {
+		issues: normalizeList(parsed.issues),
+		doctrines: normalizeList(parsed.doctrines),
+		precedents: normalizeList(parsed.precedents),
+		acts: normalizeActs(parsed.acts)
+	};
+}
+
 export const POST: RequestHandler = async ({ request, fetch }) => {
 	let facts = '';
 
@@ -75,73 +160,56 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 		const body = await request.json();
 		facts = typeof body?.facts === 'string' ? body.facts : '';
 	} catch {
-		return json({ error: 'Request body must be valid JSON.' }, { status: 400 });
+		return Response.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
 	}
 
-	if (facts.trim().length < 20) {
-		return json({ error: 'Please provide at least 20 characters of factual summary.' }, { status: 400 });
+	if (facts.trim().length < MIN_FACTS) {
+		return Response.json(
+			{ error: `Please provide at least ${MIN_FACTS} characters of factual summary.` },
+			{ status: 400 }
+		);
 	}
-	if (facts.length > 12000) {
-		return json({ error: 'Please keep the factual summary under 12,000 characters.' }, { status: 400 });
+	if (facts.length > MAX_FACTS) {
+		return Response.json(
+			{ error: `Please keep the factual summary under ${MAX_FACTS.toLocaleString()} characters.` },
+			{ status: 400 }
+		);
 	}
-
-	const openAiApiKey = OPENAI_API_KEY;
-	if (!openAiApiKey) {
-		return json({ error: 'Server is missing OPENAI_API_KEY configuration.' }, { status: 500 });
-	}
-
-	const baseUrl = OPENAI_BASE_URL;
-	const model = OPENAI_MODEL;
-
-	let response: Response;
-
-	try {
-		response = await fetch(`${baseUrl}/chat/completions`, {
-			method: 'POST',
-			headers: {
-				Authorization: ['Bearer', openAiApiKey].join(' '),
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				model,
-				temperature: 0.2,
-				response_format: { type: 'json_object' },
-				messages: [
-					{ role: 'system', content: SYSTEM_PROMPT },
-					{ role: 'user', content: facts.trim() }
-				]
-			})
-		});
-	} catch {
-		return json({ error: 'Unable to reach the model provider.' }, { status: 502 });
+	if (!OPENAI_API_KEY) {
+		return Response.json({ error: 'Server is missing OPENAI_API_KEY configuration.' }, { status: 500 });
 	}
 
-	if (!response.ok) {
-		const details = await response.text();
-		return json({ error: `Analysis request failed (${response.status}).`, details }, { status: 502 });
-	}
+	const trimmed = facts.trim();
+	const encoder = new TextEncoder();
 
-	const payload = await response.json();
-	const rawContent = payload?.choices?.[0]?.message?.content;
+	const stream = new ReadableStream({
+		async start(controller) {
+			const send = (event: SpotEvent) =>
+				controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
 
-	if (typeof rawContent !== 'string') {
-		return json({ error: 'Model returned an empty response.' }, { status: 502 });
-	}
+			try {
+				send({ stage: 'verifying' });
+				if (!(await isLegalFactPattern(fetch, trimmed))) {
+					send({ notLegal: true });
+					return;
+				}
 
-	let parsed: Partial<SpotterResponse> = {};
+				send({ stage: 'analyzing' });
+				send({ result: await analyze(fetch, trimmed) });
+			} catch (error) {
+				send({
+					error: error instanceof SpotError ? error.message : 'Unexpected error while analyzing.'
+				});
+			} finally {
+				controller.close();
+			}
+		}
+	});
 
-	try {
-		parsed = JSON.parse(rawContent);
-	} catch {
-		return json({ error: 'Model response was not valid JSON.' }, { status: 502 });
-	}
-
-	const result: SpotterResponse = {
-		issues: normalizeList(parsed.issues),
-		doctrines: normalizeList(parsed.doctrines),
-		precedents: normalizeList(parsed.precedents),
-		acts: normalizeActs(parsed.acts)
-	};
-
-	return json(result);
+	return new Response(stream, {
+		headers: {
+			'content-type': 'application/x-ndjson; charset=utf-8',
+			'cache-control': 'no-cache, no-transform'
+		}
+	});
 };

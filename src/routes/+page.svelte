@@ -1,28 +1,26 @@
 <script lang="ts">
-	type ActReference = {
-		act: string;
-		sections: string[];
-		relevance: string;
-	};
+	import { MAX_FACTS, MIN_FACTS } from '#lib/spotter.js';
+	import type { SpotEvent, SpotterResult } from '#lib/spotter.js';
 
-	type SpotterResult = {
-		issues: string[];
-		doctrines: string[];
-		precedents: string[];
-		acts: ActReference[];
-	};
-
-	const MAX_FACTS = 12000;
 	const SAMPLE_FACTS =
 		'A tenant slipped on a wet staircase in a rented apartment building after repeated written complaints to the landlord about the leak. The tenant suffered a fractured ankle and missed two months of work.';
 
 	let facts = $state('');
 	let isLoading = $state(false);
 	let errorMessage = $state('');
+	let notice = $state('');
+	let stage = $state<'verifying' | 'analyzing' | null>(null);
 	let result = $state<SpotterResult | null>(null);
 
 	let charCount = $derived(facts.length);
 	let overLimit = $derived(facts.length > MAX_FACTS);
+	let statusText = $derived(
+		stage === 'verifying'
+			? 'Checking that this is a legal fact pattern…'
+			: stage === 'analyzing'
+				? 'Spotting issues, doctrines, precedents and acts…'
+				: ''
+	);
 	let summary = $derived(
 		result
 			? `${result.issues.length} issues · ${result.doctrines.length} doctrines · ${result.precedents.length} precedents · ${result.acts.length} acts`
@@ -32,21 +30,41 @@
 	function fillSample() {
 		facts = SAMPLE_FACTS;
 		errorMessage = '';
+		notice = '';
 	}
 
 	function clearAll() {
 		facts = '';
 		errorMessage = '';
+		notice = '';
 		result = null;
+	}
+
+	function handleEvent(event: SpotEvent) {
+		if ('stage' in event) {
+			stage = event.stage;
+		} else if ('result' in event) {
+			result = {
+				issues: Array.isArray(event.result?.issues) ? event.result.issues : [],
+				doctrines: Array.isArray(event.result?.doctrines) ? event.result.doctrines : [],
+				precedents: Array.isArray(event.result?.precedents) ? event.result.precedents : [],
+				acts: Array.isArray(event.result?.acts) ? event.result.acts : []
+			};
+		} else if ('notLegal' in event) {
+			notice = "This doesn't look like a legal fact pattern. Update the facts and try again.";
+		} else if ('error' in event) {
+			errorMessage = event.error;
+		}
 	}
 
 	async function submitCase(event: SubmitEvent) {
 		event.preventDefault();
 		errorMessage = '';
+		notice = '';
 		result = null;
 
-		if (facts.trim().length < 20) {
-			errorMessage = 'Please provide a fuller factual summary (at least 20 characters).';
+		if (facts.trim().length < MIN_FACTS) {
+			errorMessage = `Please provide a fuller factual summary (at least ${MIN_FACTS} characters).`;
 			return;
 		}
 		if (facts.length > MAX_FACTS) {
@@ -65,23 +83,41 @@
 				body: JSON.stringify({ facts })
 			});
 
-			const payload = await response.json();
-
-			if (!response.ok) {
+			if (!response.ok || !response.body) {
+				const payload = await response.json().catch(() => null);
 				errorMessage = payload?.error ?? 'Unable to analyze the case summary right now.';
 				return;
 			}
 
-			result = {
-				issues: Array.isArray(payload?.issues) ? payload.issues : [],
-				doctrines: Array.isArray(payload?.doctrines) ? payload.doctrines : [],
-				precedents: Array.isArray(payload?.precedents) ? payload.precedents : [],
-				acts: Array.isArray(payload?.acts) ? payload.acts : []
-			};
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+			let finished = false;
+
+			while (true) {
+				const { done, value } = await reader.read();
+				buffer += decoder.decode(value, { stream: !done });
+				const lines = buffer.split('\n');
+				buffer = done ? '' : (lines.pop() ?? '');
+
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					const parsed: SpotEvent = JSON.parse(line);
+					if (!('stage' in parsed)) finished = true;
+					handleEvent(parsed);
+				}
+
+				if (done) break;
+			}
+
+			if (!finished) {
+				errorMessage = 'The analysis ended unexpectedly. Please try again.';
+			}
 		} catch {
 			errorMessage = 'Network error. Please try again.';
 		} finally {
 			isLoading = false;
+			stage = null;
 		}
 	}
 </script>

@@ -12,17 +12,24 @@
 		quota: QuotaInfo | null;
 		/** Deep research is counted by the month, apart from searches. */
 		research?: QuotaInfo | null;
+		/** Case comparisons are counted by the month too. */
+		compare?: QuotaInfo | null;
 		outOfSearches: boolean;
 	};
-	let { docked = false, quota, research = null, outOfSearches }: Props = $props();
-	let outOfResearch = $derived(workspace.researchMode && research !== null && research.remaining === 0);
+	let { docked = false, quota, research = null, compare = null, outOfSearches }: Props = $props();
+	let outOfResearch = $derived(
+		(workspace.researchMode && research !== null && research.remaining === 0) ||
+			(workspace.compareMode && compare !== null && compare.remaining === 0)
+	);
 
 	// The primary button says what pressing it will do.
 	let fileOnly = $derived(
 		!workspace.facts.trim() && workspace.draftAttachments.some((attachment) => attachment.kind === 'file')
 	);
 	let primaryLabel = $derived(
-		workspace.researchMode
+		workspace.compareMode
+			? 'Find cases'
+			: workspace.researchMode
 			? 'Research'
 			: fileOnly
 			? 'Send file'
@@ -33,8 +40,11 @@
 					: 'Spot issues'
 	);
 	let primaryIcon = $derived(
-		workspace.researchMode ? 'telescope' : fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
-	) as 'arrowUp' | 'squarePen' | 'sparkles' | 'telescope';
+		workspace.compareMode ? 'gitCompare' : workspace.researchMode ? 'telescope' : fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
+	) as 'arrowUp' | 'squarePen' | 'sparkles' | 'telescope' | 'gitCompare';
+
+	/** A file was sent on its own and the app is waiting to hear what to do with it. */
+	let awaitingFile = $derived(workspace.thread.some((exchange) => exchange.kind === 'reading'));
 
 	let drawerOpen = $state(false);
 	let drawerMaxHeight = $state(528);
@@ -131,10 +141,16 @@
 			required={workspace.draftAttachments.length === 0}
 			autocomplete="off"
 			rows={docked ? 2 : 5}
-			placeholder={docked
+			placeholder={workspace.compareMode
+				? 'Name the two cases, for example: Pankaj Bansal v. Union of India and Ram Kishor Arora v. Directorate of Enforcement…'
+				: docked
 				? workspace.followUp
-					? 'Add more facts to this case…'
-					: 'Tell me what you want to do with the file…'
+					? workspace.researchMode
+						? 'What should I research within your case?…'
+						: 'Add more facts to this case…'
+					: awaitingFile
+						? 'Tell me what you want to do with the file…'
+						: 'Describe the facts of a case to analyse…'
 				: 'Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord about a broken light and a leaking pipe…'}
 			class="w-full resize-none bg-transparent text-md leading-normal text-text-primary outline-none {docked
 				? ''
@@ -162,8 +178,24 @@
 			</div>
 		{/if}
 
-		{#if workspace.skills.length > 0 || workspace.researchMode || workspace.draftAttachments.length > 0 || workspace.fileStatus}
+		{#if workspace.skills.length > 0 || workspace.researchMode || workspace.compareMode || workspace.draftAttachments.length > 0 || workspace.fileStatus}
 			<ul class="flex flex-wrap gap-2" aria-label="Added to this message">
+				{#if workspace.compareMode}
+					<li
+						class="inline-flex items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
+					>
+						<Icon name="gitCompare" size={12} class="text-accent-text" />
+						Compare cases
+						<button
+							type="button"
+							onclick={() => workspace.toggleCompare()}
+							aria-label="Turn off Compare cases"
+							class="grid size-4 place-items-center rounded-pill text-text-tertiary hover:text-text-primary"
+						>
+							<Icon name="x" size={11} />
+						</button>
+					</li>
+				{/if}
 				{#if workspace.researchMode}
 					<li
 						class="inline-flex items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
@@ -278,7 +310,7 @@
 					variant="primary"
 					type="submit"
 					class="gap-[7px] px-4 py-2.5 shadow-button"
-					disabled={workspace.researchMode ? outOfResearch : workspace.overLimit || outOfSearches}
+					disabled={workspace.researchMode || workspace.compareMode ? outOfResearch : workspace.overLimit || outOfSearches}
 				>
 					<Icon name={primaryIcon} />
 					{primaryLabel}
@@ -292,10 +324,14 @@
 	<div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 text-caption text-text-tertiary">
 		{#if docked && !workspace.isLoading}
 			<p>
-				{#if workspace.researchMode}
+				{#if workspace.compareMode}
+					Name the two cases, by party names or part of a citation. You confirm them before anything is compared.
+				{:else if workspace.researchMode}
 					Name a point within your case to research on court and statute sites. It uses one of your deep research for the month.
 				{:else if !workspace.followUp}
-					Your message is sent with the file. It counts as one search.
+					{awaitingFile
+						? 'Your message is sent with the file. It counts as one search.'
+						: 'Describe the facts to start an analysis. It counts as one search.'}
 				{:else if workspace.skills.includes('draft')}
 					Your facts are added to this case and the draft is rewritten below. It counts as one search.
 				{:else}
@@ -303,7 +339,11 @@
 				{/if}
 			</p>
 		{/if}
-		{#if workspace.researchMode && research}
+		{#if workspace.compareMode && compare}
+			<p class="ml-auto tabular-nums">
+				{compare.remaining} of {compare.limit} comparisons left this month
+			</p>
+		{:else if workspace.researchMode && research}
 			<p class="ml-auto tabular-nums">
 				{research.remaining} of {research.limit} deep research left this month
 			</p>

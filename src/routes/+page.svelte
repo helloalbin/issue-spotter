@@ -7,6 +7,7 @@
 	import ErrorNotice from '#lib/components/ErrorNotice.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Progress from '#lib/components/Progress.svelte';
+	import CompareCard from '#lib/components/CompareCard.svelte';
 	import ReadingCard from '#lib/components/ReadingCard.svelte';
 	import ResearchCard from '#lib/components/ResearchCard.svelte';
 	import ResearchProgress from '#lib/components/ResearchProgress.svelte';
@@ -41,6 +42,7 @@
 
 	let quota = $derived(workspace.liveQuota ?? data.quota);
 	let research = $derived(workspace.researchQuota ?? data.research);
+	let compare = $derived(workspace.compareQuota ?? data.compare);
 	let outOfSearches = $derived(quota !== null && quota.remaining === 0);
 	// Local reset time is only known in the browser, so wait for mount to avoid a hydration mismatch.
 	let resetTime = $derived(
@@ -98,6 +100,16 @@
 					onNext={(action) => workspace.runNext(action)}
 					onEdit={() => workspace.editLast()}
 				/>
+			{:else if exchange.kind === 'compare'}
+				<CompareCard
+					{exchange}
+					{index}
+					isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
+					busy={workspace.isLoading}
+					quota={compare}
+					onConfirm={() => workspace.confirmCompare(index)}
+					onEdit={() => workspace.editLast()}
+				/>
 			{:else if exchange.kind === 'research'}
 				<ResearchCard
 					{exchange}
@@ -119,16 +131,22 @@
 		{/each}
 
 		{#if workspace.isLoading}
-			<div class="mx-auto w-full max-w-3xl border-t border-border-subtle px-6 pt-8">
-				<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
-					<span class="type-meta tracking-widest text-text-tertiary">
-						{workspace.researching ? 'DEEP RESEARCH' : 'ADDED TO CASE'}
-					</span>
-					<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{workspace.pending}</p>
-					<AttachedPages pages={workspace.draftAttachments} />
+			{#if workspace.pending}
+				<div class="mx-auto w-full max-w-3xl border-t border-border-subtle px-6 pt-8">
+					<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
+						<span class="type-meta tracking-widest text-text-tertiary">
+							{workspace.identifying ? 'COMPARE CASES' : workspace.researching ? 'DEEP RESEARCH' : 'ADDED TO CASE'}
+						</span>
+						<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{workspace.pending}</p>
+						<AttachedPages pages={workspace.draftAttachments} />
+					</div>
 				</div>
-			</div>
-			{#if workspace.researching}
+			{/if}
+			{#if workspace.identifying}
+				<ResearchProgress mode="identify" stage="identifying" />
+			{:else if workspace.comparing}
+				<ResearchProgress mode="compare" stage={workspace.compareStage} />
+			{:else if workspace.researching}
 				<ResearchProgress stage={workspace.researchStage} />
 			{:else}
 				<Progress
@@ -159,7 +177,7 @@
 				</div>
 
 				<div>
-					<Composer {quota} {research} {outOfSearches} />
+					<Composer {quota} {research} {compare} {outOfSearches} />
 					<div class="mt-3 space-y-3">{@render messages()}</div>
 				</div>
 
@@ -201,7 +219,7 @@
 					<ErrorNotice message={workspace.errorMessage} />
 				</div>
 			{/if}
-			<Composer docked {quota} {research} {outOfSearches} />
+			<Composer docked {quota} {research} {compare} {outOfSearches} />
 			<div class="mt-3 space-y-3">{@render messages()}</div>
 		</div>
 	</div>

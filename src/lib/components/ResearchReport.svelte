@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { RESEARCH_TEMPLATE, headingOf, renderMarkdown } from '#lib/report.js';
+	import { headingOf, renderMarkdown, templateFor } from '#lib/report.js';
 	import type { ReportLine, ResearchBrief } from '#lib/spotter.js';
 	import Icon from './Icon.svelte';
 
@@ -12,7 +12,7 @@
 	/** The sections in the template's order, each with its printed number. */
 	let sections = $derived.by(() => {
 		let position = 0;
-		return RESEARCH_TEMPLATE.map((slot) => {
+		return templateFor(report.kind).map((slot) => {
 			if (slot.number) position += 1;
 			return {
 				slot,

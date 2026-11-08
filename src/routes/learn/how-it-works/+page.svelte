@@ -90,7 +90,18 @@
 		rely on them.
 	</p>
 
-	<h2>8. What to keep in mind</h2>
+	<h2>8. Comparing two cases</h2>
+	<p>
+		Switch on <strong>Compare cases</strong> in the drawer and name two cases, by party names or part
+		of a citation. {SITE_NAME} finds each judgment and opens its page to check it is the case you
+		meant, then shows you the two cases to confirm. Only after you confirm does it compare them: first
+		the facts, then what each court decided, where they agree and differ, and any later decision that
+		reversed, doubted or followed either. The report uses the same layout and the same checks as deep
+		research. Only Indian Kanoon pages can be compared for now. It is limited to a few comparisons a
+		month.
+	</p>
+
+	<h2>9. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case

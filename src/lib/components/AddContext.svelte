@@ -13,7 +13,9 @@
 	let urlInput = $state<HTMLInputElement>();
 	let fileInput = $state<HTMLInputElement>();
 
-	let selected = $derived(workspace.skills.length + (workspace.researchMode ? 1 : 0));
+	let selected = $derived(
+		workspace.skills.length + (workspace.researchMode ? 1 : 0) + (workspace.compareMode ? 1 : 0)
+	);
 	let adding = $derived(workspace.urlStatus === 'loading');
 
 	/** Reads each chosen file in turn. The composer shows what happened to each, so the drawer closes. */
@@ -102,15 +104,23 @@
 		<div class="grid grid-cols-2 gap-2">
 			{#each SKILLS as skill}
 				{@const research = skill.id === 'deep-research'}
+				{@const compare = skill.id === 'compare-cases'}
 				{@const on = research
 					? workspace.researchMode
-					: workspace.skills.includes(skill.id as ActiveSkill)}
+					: compare
+						? workspace.compareMode
+						: workspace.skills.includes(skill.id as ActiveSkill)}
 				{@const usable = skill.available && (!research || workspace.followUp || workspace.researchMode)}
 				<button
 					type="button"
 					disabled={!usable}
 					aria-pressed={usable ? on : undefined}
-					onclick={() => (research ? workspace.toggleResearch() : workspace.toggleSkill(skill.id as ActiveSkill))}
+					onclick={() =>
+						research
+							? workspace.toggleResearch()
+							: compare
+								? workspace.toggleCompare()
+								: workspace.toggleSkill(skill.id as ActiveSkill)}
 					title={!skill.available
 						? 'Coming soon'
 						: !usable

@@ -14,6 +14,8 @@ import {
 import type {
 	AnalysisMeta,
 	Attachment,
+	CaseCandidate,
+	CompareEvent,
 	QuotaInfo,
 	ResearchBrief,
 	ResearchEvent,
@@ -56,7 +58,20 @@ export type ResearchExchange = ExchangeBase & {
 	brief: ResearchBrief;
 };
 
-export type Exchange = AnalysisExchange | ReadingExchange | ResearchExchange;
+/**
+ * Two cases to compare: first the ones the app found, for the user to confirm, then the comparison
+ * once they have. It adds nothing to the case text.
+ */
+export type CompareExchange = ExchangeBase & {
+	kind: 'compare';
+	/** What the user typed to name the cases. */
+	input: string;
+	cases: CaseCandidate[];
+	state: 'confirm' | 'comparing' | 'done';
+	brief?: ResearchBrief;
+};
+
+export type Exchange = AnalysisExchange | ReadingExchange | ResearchExchange | CompareExchange;
 
 /** What the app offers to do after reading a file the user sent on its own. */
 export type NextAction = {
@@ -135,6 +150,15 @@ class Workspace {
 	/** Deep research runs in progress, which is a different job from analysing. */
 	researching = $state(false);
 	researchStage = $state<'checking' | 'searching' | 'reading' | 'writing' | null>(null);
+	/** Whether the next message names two cases to compare. */
+	compareMode = $state(false);
+	/** Finding the two cases, which comes before the user confirms them. */
+	identifying = $state(false);
+	/** The comparison itself is running. */
+	comparing = $state(false);
+	compareStage = $state<'opening' | 'treatment' | 'reading' | 'writing' | null>(null);
+	/** Remaining comparisons this month. */
+	compareQuota = $state<QuotaInfo | null>(null);
 	/** Remaining deep research this month; the value loaded with the page until a run updates it. */
 	researchQuota = $state<QuotaInfo | null>(null);
 
@@ -187,7 +211,12 @@ class Workspace {
 	async refreshQuota() {
 		try {
 			const response = await fetch('/api/me', { headers: await auth.headers() });
-			if (response.ok) this.liveQuota = (await response.json()).quota;
+			if (response.ok) {
+				const payload = await response.json();
+				this.liveQuota = payload.quota;
+				this.researchQuota = payload.research ?? null;
+				this.compareQuota = payload.compare ?? null;
+			}
 		} catch {
 			// The counter keeps its last value.
 		}
@@ -224,7 +253,11 @@ class Workspace {
 		this.notice = '';
 		this.thread = [];
 		this.researchMode = false;
+		this.compareMode = false;
 		this.researching = false;
+		this.identifying = false;
+		this.comparing = false;
+		this.compareStage = null;
 		this.researchStage = null;
 		this.draftAttachments = [];
 		this.urlError = '';
@@ -240,6 +273,15 @@ class Workspace {
 	toggleResearch() {
 		if (!this.researchMode && !this.followUp) return;
 		this.researchMode = !this.researchMode;
+		if (this.researchMode) this.compareMode = false;
+		this.errorMessage = '';
+		this.notice = '';
+	}
+
+	/** Comparing two cases needs no case of its own: the user names the two. */
+	toggleCompare() {
+		this.compareMode = !this.compareMode;
+		if (this.compareMode) this.researchMode = false;
 		this.errorMessage = '';
 		this.notice = '';
 	}
@@ -390,6 +432,9 @@ class Workspace {
 		if (last.kind === 'research') {
 			this.facts = last.topic;
 			this.researchMode = true;
+		} else if (last.kind === 'compare') {
+			this.facts = last.input;
+			this.compareMode = true;
 		} else {
 			this.facts = last.added;
 		}
@@ -493,6 +538,7 @@ class Workspace {
 		if (this.isLoading) return;
 		this.errorMessage = '';
 		this.notice = '';
+		if (this.compareMode) return this.#identify();
 		if (this.researchMode) return this.#research();
 
 		// With a conversation on screen, what is typed continues that case instead of starting a new one.
@@ -713,6 +759,137 @@ class Workspace {
 				this.researching = false;
 				this.researchStage = null;
 				this.pending = null;
+			}
+		}
+	}
+
+	/** Finds the two cases the user named and shows them for confirmation. Nothing is compared yet. */
+	async #identify() {
+		const input = this.facts.trim();
+		if (input.length < 8) {
+			this.errorMessage = 'Name the two cases you want to compare.';
+			return;
+		}
+
+		this.isLoading = true;
+		this.identifying = true;
+		this.pending = input;
+		this.#abort?.abort();
+		const run = (this.#run += 1);
+		this.#abort = new AbortController();
+
+		try {
+			const response = await fetch('/api/compare/identify', {
+				method: 'POST',
+				signal: this.#abort.signal,
+				headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+				body: JSON.stringify({ input })
+			});
+			const payload = await response.json().catch(() => null);
+			if (!response.ok || !Array.isArray(payload?.cases)) {
+				if (payload?.code === 'auth_invalid') {
+					this.errorMessage = payload.error;
+					await auth.signOut();
+				} else {
+					this.errorMessage = payload?.error ?? 'The cases could not be looked up right now.';
+				}
+				return;
+			}
+			if (run !== this.#run) return;
+			this.thread.push({ kind: 'compare', added: '', attachments: [], input, cases: payload.cases, state: 'confirm' });
+			this.facts = '';
+			this.compareMode = false;
+		} catch (error) {
+			if (run !== this.#run) return;
+			if ((error as Error)?.name !== 'AbortError') this.errorMessage = 'Network error. Please try again.';
+			else this.notice = 'Stopped. Your text is kept.';
+		} finally {
+			if (run === this.#run) {
+				this.#abort = null;
+				this.isLoading = false;
+				this.identifying = false;
+				this.pending = null;
+			}
+		}
+	}
+
+	/** The user has confirmed the two cases: run the comparison and fill it into their message. */
+	async confirmCompare(index: number) {
+		const exchange = this.thread[index];
+		if (this.isLoading || exchange?.kind !== 'compare' || exchange.state !== 'confirm') return;
+		this.errorMessage = '';
+		this.notice = '';
+
+		this.isLoading = true;
+		this.comparing = true;
+		this.compareStage = 'opening';
+		exchange.state = 'comparing';
+		this.#abort?.abort();
+		const run = (this.#run += 1);
+		this.#abort = new AbortController();
+		let finished = false;
+
+		try {
+			const response = await fetch('/api/compare', {
+				method: 'POST',
+				signal: this.#abort.signal,
+				headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+				body: JSON.stringify({ cases: exchange.cases.map(({ url, name }) => ({ url, name })) })
+			});
+
+			if (!response.ok || !response.body) {
+				const payload = await response.json().catch(() => null);
+				if (payload?.compare) this.compareQuota = payload.compare;
+				if (payload?.code === 'auth_invalid') {
+					this.errorMessage = payload.error;
+					await auth.signOut();
+				} else {
+					this.errorMessage = payload?.error ?? 'Unable to start the comparison right now.';
+				}
+				return;
+			}
+
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+			while (true) {
+				const { done, value } = await reader.read();
+				buffer += decoder.decode(value, { stream: !done });
+				const lines = buffer.split('\n');
+				buffer = done ? '' : (lines.pop() ?? '');
+				for (const line of lines) {
+					if (!line.trim()) continue;
+					if (run !== this.#run) return;
+					const event: CompareEvent = JSON.parse(line);
+					if ('compare' in event) this.compareQuota = event.compare;
+					else if ('stage' in event) this.compareStage = event.stage;
+					else if ('brief' in event) {
+						finished = true;
+						exchange.brief = event.brief;
+						exchange.state = 'done';
+					} else if ('error' in event) {
+						finished = true;
+						this.errorMessage = event.error;
+					}
+				}
+				if (done) break;
+			}
+			if (!finished) this.errorMessage = 'The comparison ended unexpectedly. Please try again.';
+		} catch (error) {
+			if (run !== this.#run) return;
+			if ((error as Error)?.name === 'AbortError') {
+				this.notice = 'Comparison stopped. It still counts toward this month.';
+			} else {
+				this.errorMessage = 'Network error. Please try again.';
+			}
+		} finally {
+			if (run === this.#run) {
+				this.#abort = null;
+				this.isLoading = false;
+				this.comparing = false;
+				this.compareStage = null;
+				// A comparison that did not finish goes back to being confirmed, so it can be tried again.
+				if (exchange.state === 'comparing') exchange.state = 'confirm';
 			}
 		}
 	}

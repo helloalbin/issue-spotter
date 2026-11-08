@@ -37,6 +37,16 @@
 		before relying on it.</strong> Deep research is limited to a few runs a month.
 	</p>
 
+	<h2>Case comparisons are not verified advice</h2>
+	<p>
+		The comparison is written from the pages of the two judgments and of any other decision the
+		search found. A statement stays only if the passage given for it is found on a page, which does
+		not make it correct: the model may misread a passage, and for a long judgment it sees only the
+		paragraphs chosen as most relevant. The search for decisions that overturned either case can
+		miss them, so <strong>an empty "how other decisions treated them" section does not mean none
+		exist</strong>. Check a case is still good law before you rely on it.
+	</p>
+
 	<h2>The output can be wrong</h2>
 	<p>
 		The analysis is written by an AI model. It can miss issues, misstate the law, rely on outdated

@@ -72,6 +72,15 @@
 		month, using the same random ID and hashed IP address as your searches.
 	</p>
 
+	<h2>Comparing cases</h2>
+	<p>
+		The names you give are sent to the AI model provider, which searches court and statute websites
+		to find the two judgments. Our server then fetches those pages and sends their text, with the
+		text of any later decision that may have overturned either, to the same provider to write the
+		comparison. We do not store the result; it stays in your browser. We count comparisons per month
+		and lookups per day, using the same random ID and hashed IP address as your searches.
+	</p>
+
 	<h2>Pages you add</h2>
 	<p>
 		When you add a link, our server fetches that one page from Indian Kanoon, India Code or the

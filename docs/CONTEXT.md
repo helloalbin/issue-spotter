@@ -65,7 +65,7 @@ There is no user table and nothing user-written is persisted. The only stored da
 | `src/routes/privacy`, `terms`, `samples`, `learn/*` | Privacy and terms, the sample cases, and the Learn pages (how it works, issue-spotting guide, glossary), all on `ContentPage.svelte`. |
 | `src/routes/design-system` | Development-only token and primitive reference. Returns 404 in production. |
 | `src/routes/layout.css` | The design tokens, type scale and text styles. The only file allowed to contain raw colors. |
-| `src/lib/components/` | `Sidebar`, `Composer`, `AddContext`, `SignInDialog`, `Progress`, `AnalysisResult`, `ContentPage`, `Logo`, `Button`, `Chip`, `Icon`, `ThemeToggle`, `GoogleMark`. |
+| `src/lib/components/` | `Sidebar`, `Composer`, `AddContext`, `SignInDialog`, `Progress`, `AnalysisResult`, `Inspector` (the verification pane), `ContentPage`, `Logo`, `Button`, `Chip`, `Icon`, `ThemeToggle`, `GoogleMark`. |
 | `src/lib/icons.ts` | The Lucide icons the UI uses, by name. Add an entry to use a new one. |
 | `src/lib/site.ts`, `samples.ts`, `markdown.ts` | Brand name and contact address, sample fact patterns, the Copy as Markdown export. |
 | `scripts/check-tokens.mjs` | `npm run check:tokens`: fails on any raw color in `src/` outside `layout.css`. |
@@ -78,6 +78,7 @@ There is no user table and nothing user-written is persisted. The only stored da
 | `src/lib/firebase.ts` | Browser-only Firebase Auth setup. Loaded with a dynamic import, only when Firebase is configured. |
 | `src/routes/api/me/+server.ts` | `GET /api/me`: the current user (or null) and their remaining searches. |
 | `src/lib/spotter.ts` | Shared (client and server): constants, result and event types, the legal-vocabulary heuristic. |
+| `src/lib/sources.ts` | `searchLink`, `caseLink`, `actLink`, `sectionLink`: builds the search links on references (Indian Kanoon for Indian law, otherwise Google). Has tests. |
 | `src/lib/server/deadline.ts` | `Deadline`: idle and total time limits for one provider call, combined with the user's abort signal. Has tests. |
 | `src/lib/server/section-stream.ts` | `SectionParser`: reads the streamed JSON reply and reports each finished entry and section. Has tests. |
 | `src/lib/server/quota.ts` | D1 quota functions: `reserve`, `release`, `peek`. |
@@ -95,9 +96,9 @@ There is no user table and nothing user-written is persisted. The only stored da
 1. Invalid JSON, facts under 20 trimmed characters, or over 12,000 raw characters return **400**. A missing `OPENAI_API_KEY` returns **500**. A missing D1 binding returns **503**.
 2. **Quota.** `reserve` takes one search from the visitor's counter and the IP counter. Neither has room: **429** with `code: "quota_exceeded"` and the quota.
 3. A stream starts (`application/x-ndjson`). Events (`SpotEvent` in `src/lib/spotter.ts`):
-   `{quota}`, `{stage: "verifying"}`, `{stage: "analyzing"}`, `{item: {section, value}}`, `{sectionDone}`, `{result}`, `{notLegal: true}`, `{error}`.
+   `{quota}`, `{stage: "verifying"}`, `{stage: "analyzing"}`, `{item: {section, value}}`, `{sectionDone}`, `{meta: {model, ms}}`, `{result}`, `{notLegal: true}`, `{error}`.
 4. **Verification.** `looksLegal` (see below) true: skip the classifier. Otherwise `stage: verifying`, then a classifier call. "no" means `notLegal`.
-5. **Analysis (streamed).** `stage: analyzing`, then the call runs with `stream: true`. `SectionParser` (`src/lib/server/section-stream.ts`) reads the model's JSON as it arrives and the server sends an `item` as each entry completes (normalized and capped at 8 per section, 6 acts) and a `sectionDone` as each array closes. The key order in the system prompt (issues, doctrines, precedents, acts) is the order the UI fills in. When the reply ends, the whole text is parsed and normalized into `SpotterResult` and sent as `result`, which is the source of truth. A provider that ignores `stream` and answers in one JSON body still works: the items arrive together.
+5. **Analysis (streamed).** `stage: analyzing`, then the call runs with `stream: true`. `SectionParser` (`src/lib/server/section-stream.ts`) reads the model's JSON as it arrives and the server sends an `item` as each entry completes (normalized and capped at 8 per section, 6 acts) and a `sectionDone` as each array closes. The key order in the system prompt (issues, doctrines, precedents, acts) is the order the UI fills in. When the reply ends, the whole text is parsed and normalized into `SpotterResult` and sent as `result`, which is the source of truth, preceded by a `meta` event with the model name and the analysis time. The model is asked for `jurisdiction` first, then `issues` and `doctrines` (strings), `precedents` (objects `{case, year}`; a year that is not four digits is dropped; plain strings from an older reply are still accepted) and `acts`. A provider that ignores `stream` and answers in one JSON body still works: the items arrive together.
 6. **Refunds.** A provider error refunds the search. A `notLegal` rejection is free up to `QUOTA_REJECTION_MULTIPLIER` times the daily limits, then it counts.
 7. Mid-stream failures arrive as an `{error}` event, not a status code.
 8. **Timeouts.** Each provider call runs under a `Deadline` (`src/lib/server/deadline.ts`). The analysis must produce a response or a new chunk within `PROVIDER_IDLE_TIMEOUT_MS` and finish within `ANALYSIS_TOTAL_TIMEOUT_MS`; the classifier gets `CLASSIFIER_TIMEOUT_MS`. A stalled or overrunning analysis aborts the upstream request, **refunds the search** and sends `{error: "The model provider took too long to respond. Please try again."}`. A classifier timeout fails open like any classifier error. The user's own Stop is not a timeout and is not refunded.
@@ -228,8 +229,8 @@ Open decisions before deploy: canonical host (bare domain, with `www` redirected
 
 ## Known issues and open work
 
-1. **Hallucinated citations.** Precedents and sections are model output with no verification. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
-2. **Little test coverage.** Only `SectionParser` and `Deadline` have tests. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
+1. **Hallucinated citations.** Precedents, years and sections are model output with no verification. The links on references are searches the user runs, not checks we make. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
+2. **Little test coverage.** Only `SectionParser`, `Deadline` and the source links have tests. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
 3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The privacy and terms pages exist, so the consent screen can link to them. The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
 3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.

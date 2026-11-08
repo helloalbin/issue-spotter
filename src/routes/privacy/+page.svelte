@@ -45,6 +45,14 @@
 		</li>
 	</ul>
 
+	<h2>Links to other sites</h2>
+	<p>
+		References in an analysis link to a search on Indian Kanoon, or on Google when the facts point
+		to another country's law. A link opens in a new tab and sends that site the case or section name
+		in the address. We do not send them anything else, and their handling of it is their own. A link
+		is a search, not a confirmation that a case or section exists.
+	</p>
+
 	<h2>Cookies and local storage</h2>
 	<ul>
 		<li>
@@ -54,6 +62,10 @@
 		<li>
 			<code>theme</code> in your browser's local storage: remembers whether you chose the light or
 			dark theme. It never leaves your device.
+		</li>
+		<li>
+			<code>pane</code> in local storage: remembers whether you hid the verification pane. It never
+			leaves your device.
 		</li>
 		<li>
 			If you sign in, Firebase keeps a sign-in session in your browser so you stay signed in.

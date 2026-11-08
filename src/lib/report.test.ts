@@ -47,6 +47,7 @@ test('lines carry their source numbers and an inference is labelled', () => {
 test('a long statement is cut at a word limit', () => {
 	assert.equal(clampWords('one two three', 5), 'one two three');
 	assert.equal(clampWords('one two three four five six', 4), 'one two three four…');
+	assert.equal(clampWords('First clause is quite long here, then a second part follows after it', 10), 'First clause is quite long here…');
 });
 
 test('the template is a fixed list: synopsis first, then numbered sections', () => {

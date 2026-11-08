@@ -109,6 +109,8 @@ export type ResearchCheck = {
 	status: 'confirmed' | 'read' | 'partial' | 'unsupported' | 'unverified';
 	source: number;
 	quote?: string;
+	/** The quote is the page's own closest wording to what the writer gave, not the writer's words. */
+	approx?: boolean;
 };
 
 export type ResearchSentence = {

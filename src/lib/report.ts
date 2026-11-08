@@ -25,7 +25,7 @@ export type Slot = {
 	plain?: boolean;
 };
 
-export const MAX_LINE_WORDS = 45;
+export const MAX_LINE_WORDS = 60;
 export const MAX_GROUP_LINES = 3;
 
 export const RESEARCH_TEMPLATE: Slot[] = [
@@ -40,7 +40,12 @@ export const RESEARCH_TEMPLATE: Slot[] = [
 /** Cuts a statement to a word limit at a word boundary. */
 export function clampWords(text: string, max = MAX_LINE_WORDS): string {
 	const words = text.trim().split(/\s+/);
-	return words.length <= max ? words.join(' ') : words.slice(0, max).join(' ').replace(/[,;:]$/, '') + '…';
+	if (words.length <= max) return words.join(' ');
+	const cut = words.slice(0, max).join(' ');
+	// Prefer ending at a sentence or clause, not in the middle of a phrase.
+	const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '), cut.lastIndexOf(', '));
+	if (stop > cut.length * 0.6) return cut.slice(0, stop).replace(/[,;:]$/, '') + (cut[stop] === '.' ? '.' : '…');
+	return cut.replace(/[,;:]$/, '') + '…';
 }
 
 /** `[1][3]` for a line's sources. */

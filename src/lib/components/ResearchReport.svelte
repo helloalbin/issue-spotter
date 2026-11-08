@@ -167,6 +167,9 @@
 					<p class="text-text-secondary">{item.text}</p>
 					<blockquote class="mt-1 border-l-2 border-border-default pl-3 text-text-tertiary">
 						{item.check?.quote}
+						{#if item.check?.approx}
+							<span class="ml-1 text-[10px] text-text-muted">(closest wording on the page)</span>
+						{/if}
 						<a
 							href="#source-{index}-{item.check?.source}"
 							class="ml-1 font-mono text-[10px] text-accent-text hover:underline">[{item.check?.source}]</a

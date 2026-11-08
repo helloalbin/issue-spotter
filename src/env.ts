@@ -141,8 +141,9 @@ export const variables = defineEnvVars({
 		schema: (value) => positiveInt(value, 8000)
 	},
 	DEEP_RESEARCH_PDF_MAX_BYTES: {
-		description: 'Largest PDF handed to the writer. A bigger one is listed as opened but not read.',
-		schema: (value) => positiveInt(value, 1500000)
+		description:
+			'Largest PDF handed to the writer, in bytes. 0 (the default) leaves PDFs unread: the app cannot check a quote from a PDF itself, and in testing a large share of quotes models gave for pages were not on the page.',
+		schema: (value) => (value === '0' || value === undefined || value === '' ? 0 : positiveInt(value, 1500000))
 	},
 	DEEP_RESEARCH_READ_SOURCES: {
 		description: 'Most cited pages a deep research run reads and writes its report from. 0 turns the report off and keeps the first brief.',

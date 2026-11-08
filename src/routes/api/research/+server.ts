@@ -59,14 +59,24 @@ const MAX_PDFS = 2;
 /** Reasoning models take a reasoning effort; the others reject the field. */
 const isReasoningModel = (model: string) => /^(gpt-5|o\d)/.test(model);
 
-/** The size of a PDF in bytes, or null when the site does not say. */
+/**
+ * The size of a PDF in bytes, or null when the site does not say. Some sites answer a HEAD request
+ * with nothing, so a one-byte range request is the second try. Redirects are not followed: a PDF
+ * that moves is simply not read.
+ */
 async function pdfSize(fetchFn: typeof fetch, url: string, signal: AbortSignal): Promise<number | null> {
 	const check = checkUrl(url, RESEARCH_DOMAINS, { allowLocal: import.meta.env.DEV });
 	if (!check.ok) return null;
+	const headers = { 'user-agent': 'LegalSpotter/1.0 (+https://legalspotter.com)' };
 	try {
-		const head = await fetchFn(check.url, { method: 'HEAD', signal, redirect: 'follow' });
+		const head = await fetchFn(check.url, { method: 'HEAD', signal, redirect: 'manual', headers });
 		const length = Number(head.headers.get('content-length'));
-		return head.ok && Number.isFinite(length) && length > 0 ? length : null;
+		if (head.ok && Number.isFinite(length) && length > 0) return length;
+
+		const ranged = await fetchFn(check.url, { signal, redirect: 'manual', headers: { ...headers, range: 'bytes=0-0' } });
+		await ranged.body?.cancel();
+		const total = Number(ranged.headers.get('content-range')?.match(/\/(\d+)\s*$/)?.[1]);
+		return Number.isFinite(total) && total > 0 ? total : null;
 	} catch {
 		return null;
 	}
@@ -100,14 +110,17 @@ async function writeReport(
 
 	const pages = new Map<number, string>();
 	const cut = new Map<number, boolean>();
+	const excerpts = new Map<number, string>();
 	const texts: SourceText[] = [];
 	const pdfs: typeof picked = [];
+	const unread: { host: string; why: string }[] = [];
 
 	await Promise.all(
 		picked.map(async (source) => {
 			if (isPdfUrl(source.url)) {
-				const size = await pdfSize(fetchFn, source.url, signal);
-				if (size !== null && size <= DEEP_RESEARCH_PDF_MAX_BYTES && pdfs.length < MAX_PDFS) pdfs.push(source);
+				const size = DEEP_RESEARCH_PDF_MAX_BYTES > 0 ? await pdfSize(fetchFn, source.url, signal) : null;
+				if (DEEP_RESEARCH_PDF_MAX_BYTES > 0 && size !== null && size <= DEEP_RESEARCH_PDF_MAX_BYTES && pdfs.length < MAX_PDFS) pdfs.push(source);
+				else unread.push({ host: source.host, why: DEEP_RESEARCH_PDF_MAX_BYTES === 0 ? 'pdf reading is off' : size === null ? 'pdf size unknown' : size > DEEP_RESEARCH_PDF_MAX_BYTES ? `pdf too large (${size} bytes)` : 'too many pdfs' });
 				return;
 			}
 			try {
@@ -120,12 +133,15 @@ async function writeReport(
 				const excerpt = selectExcerpts(page.text, query, DEEP_RESEARCH_READ_CHARS);
 				pages.set(source.n, page.text);
 				cut.set(source.n, excerpt.cut);
+				excerpts.set(source.n, excerpt.text);
 				texts.push({ n: source.n, host: source.host, title: source.title, text: excerpt.text, cut: excerpt.cut });
-			} catch {
+			} catch (error) {
 				// A page that cannot be read is simply not used.
+				unread.push({ host: source.host, why: error instanceof Error ? error.message : 'error' });
 			}
 		})
 	);
+	if (unread.length > 0) console.log(JSON.stringify({ event: 'research_unread', sources: unread }));
 	if (texts.length === 0 && pdfs.length === 0) return brief;
 	texts.sort((a, b) => a.n - b.n);
 
@@ -194,7 +210,22 @@ async function writeReport(
 	}
 
 	const pdfNumbers = new Set(usedPdfs.map((pdf) => pdf.n));
-	const report = buildReport(draft, topic, { pages, pdfs: pdfNumbers });
+	const drops: { text: string; source: number; quote?: string; why: string }[] = [];
+	const report = buildReport(draft, topic, { pages, pdfs: pdfNumbers, excerpts }, (info) => drops.push(info));
+	if (drops.length > 0) {
+		const byReason = Object.fromEntries([...new Set(drops.map((d) => d.why))].map((why) => [why, drops.filter((d) => d.why === why).length]));
+		console.log(JSON.stringify({ event: 'research_dropped', count: drops.length, byReason }));
+		if (import.meta.env.DEV) {
+			// Development only: show how close each dropped quote came, to tell a made-up quote from a matching bug.
+			const key = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+			for (const drop of drops.slice(0, 6)) {
+				const page = ` ${key(pages.get(drop.source) ?? '')} `;
+				const words = key(drop.quote ?? '').split(' ');
+				const found = (from: number, to: number) => page.includes(` ${words.slice(from, to).join(' ')} `);
+				console.log(JSON.stringify({ event: 'research_dropped_detail', source: drop.source, quote: drop.quote?.slice(0, 220), startFound: found(0, 6), endFound: found(-6, words.length) || found(Math.max(0, words.length - 6), words.length), wholeLen: words.length }));
+			}
+		}
+	}
 	if (reportTally(report).lines === 0) return brief;
 
 	return {

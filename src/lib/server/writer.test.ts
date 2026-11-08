@@ -51,7 +51,7 @@ test('sizes and lengths are clamped to the template; markup is removed', () => {
 	const report = buildReport(draft, 't', readable);
 	const synopsis = report.sections[0].lines;
 	assert.equal(synopsis.length, 5);
-	assert.ok(synopsis[0].text.split(' ').length <= 46 && !synopsis[0].text.includes('**'));
+	assert.ok(synopsis[0].text.split(' ').length <= 61 && !synopsis[0].text.includes('**'));
 	const authorities = report.sections.find((s) => s.id === 'authorities')!.children!;
 	assert.equal(authorities.length, 1, 'a case with nothing verified is left out');
 	assert.equal(authorities[0].lines.length, 3);
@@ -67,4 +67,15 @@ test('the input gives the case, the question, the leads and each labelled source
 	const text = writerInput('facts here', 'the question', 'a lead', [{ n: 3, host: 'indiankanoon.org', title: 'Case', text: 'body', cut: true }]);
 	assert.match(text, /Research question:\nthe question/);
 	assert.match(text, /SOURCE \[3\] Case \(indiankanoon\.org\) \(excerpts of a long document/);
+});
+
+test('a near-miss quote is kept with the page\'s own wording and marked approximate', () => {
+	const page = 'The Court held that the action of informing the person arrested about the grounds of his arrest is sufficient compliance of Section 19 of the PML Act and nothing more was needed.';
+	const draft = parseDraft(JSON.stringify({ title: 't', synopsis: [{ text: 'Oral information suffices.', source: 1, quote: 'the action of informing the person arrested about the grounds of his arrest is sufficient compliance of Section 19(1) of the PML Act' }], law: [], authorities: [], application: [], against: [], notConfirmed: [] }))!;
+	const report = buildReport(draft, 't', { pages: new Map([[1, page]]), pdfs: new Set(), excerpts: new Map([[1, page]]) });
+	const check = report.sections[0].lines[0].check!;
+	assert.equal(check.status, 'confirmed');
+	assert.equal(check.approx, true);
+	assert.ok(page.includes(check.quote!));
+	assert.equal(report.dropped, 0);
 });

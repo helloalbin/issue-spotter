@@ -1,6 +1,6 @@
 import { MAX_GROUP_LINES, MAX_LINE_WORDS, RESEARCH_TEMPLATE, clampWords } from '../report.ts';
 import type { Report, ReportLine, ReportSection } from '../spotter.ts';
-import { quoteSupported } from './ground.ts';
+import { closestPassage, quoteSupported } from './ground.ts';
 
 const claim = {
 	type: 'object',
@@ -41,10 +41,11 @@ export const REPORT_SCHEMA = {
 export const WRITER_INSTRUCTIONS =
 	'You write a legal research report for a law student, in a fixed format, from source texts you are given. ' +
 	'The sources are labelled SOURCE [n]. Use ONLY what those texts say; never your own knowledge, and never anything from the leads except to know what to look for. ' +
-	'Fill every field of the format. Each statement is {text, source, quote}: text is one plain sentence of at most 40 words; source is the number n of the SOURCE it rests on; ' +
-	'quote is copied exactly, character for character, from that SOURCE, 8 to 40 words, the passage that supports the sentence. If you need two passages, join them with "…". Never paraphrase inside a quote. ' +
+	'Fill every field of the format. Each statement is {text, source, quote}: text is one plain sentence of at most 45 words; source is the number n of the SOURCE it rests on; ' +
+	'quote is copied exactly, character for character, from that SOURCE, 8 to 40 words, the passage that supports the sentence. If you need two passages, join them with "…". Never paraphrase inside a quote, and never run a quote across a line like "[… 12 paragraphs omitted …]": take it from one passage, or join two passages with "…". ' +
+	'A statement about a case must rest on that case\'s own SOURCE when it was given. If you only have another judgment\'s description of it, begin the statement "As described in <that judgment>,". ' +
 	'A statement you cannot support with a quote from a source does not belong in the report: leave it out and, if it matters, name it in notConfirmed. ' +
-	'Fields: title is the question restated in at most 15 words. synopsis is 3 to 5 numbered-point answers to the question, each a complete sentence. ' +
+	'Fields: title is the question restated in at most 15 words. synopsis is 3 to 5 numbered-point answers to the question, each a complete sentence and each saying something the others do not. ' +
 	'law is the statutes and provisions that govern it. authorities is the judgments, one entry per case with name as "Case v. Case (Court, year)" exactly as the source gives it, and up to 3 statements each: what it held and how later or earlier decisions treated it. ' +
 	'application is how the law applies to the user\'s own facts: here, and only here, a statement may be your own reasoning about those facts, with source 0 and an empty quote. ' +
 	'against is what qualifies, distinguishes, limits or goes against the answer, including any decision said to overrule or doubt another; keep passages that cut against the answer, not only ones that support it. ' +
@@ -120,7 +121,8 @@ const plain = (text: string) =>
 		.replace(/\s+/g, ' ')
 		.trim();
 
-export type Readable = { pages: Map<number, string>; pdfs: Set<number> };
+/** `excerpts` is what the writer was shown of each page, which a near-miss quote is matched against. */
+export type Readable = { pages: Map<number, string>; pdfs: Set<number>; excerpts?: Map<number, string> };
 
 /**
  * Turns the writer's draft into the report. A statement stays only if its quote is found in the
@@ -128,7 +130,12 @@ export type Readable = { pages: Map<number, string>; pdfs: Set<number> };
  * anything else is counted as dropped. Only the application section may reason beyond a source, and
  * it says so. Section sizes and statement lengths are clamped to the template.
  */
-export function buildReport(draft: Draft, topic: string, readable: Readable): Report {
+export function buildReport(
+	draft: Draft,
+	topic: string,
+	readable: Readable,
+	onDrop?: (info: { text: string; source: number; quote?: string; why: 'no-such-source' | 'no-quote' | 'quote-not-on-page' }) => void
+): Report {
 	let dropped = 0;
 	const droppedTexts: string[] = [];
 
@@ -141,10 +148,16 @@ export function buildReport(draft: Draft, topic: string, readable: Readable): Re
 		if (page !== undefined && item.quote && quoteSupported(item.quote, page)) {
 			return { text, cites: [item.source], basis: 'source', check: { status: 'confirmed', source: item.source, quote: item.quote } };
 		}
+		const excerpt = readable.excerpts?.get(item.source);
+		const snapped = item.quote && excerpt ? closestPassage(item.quote, excerpt) : null;
+		if (snapped) {
+			return { text, cites: [item.source], basis: 'source', check: { status: 'confirmed', source: item.source, quote: snapped, approx: true } };
+		}
 		if (readable.pdfs.has(item.source) && item.quote) {
 			return { text, cites: [item.source], basis: 'source', check: { status: 'read', source: item.source, quote: item.quote } };
 		}
 		dropped += 1;
+		onDrop?.({ text, source: item.source, quote: item.quote, why: page === undefined && !readable.pdfs.has(item.source) ? 'no-such-source' : !item.quote ? 'no-quote' : 'quote-not-on-page' });
 		if (droppedTexts.length < 3) droppedTexts.push(text);
 		return null;
 	};

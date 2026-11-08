@@ -63,3 +63,10 @@ test('a comparison labels its own reasoning without mentioning your facts', () =
 	assert.doesNotMatch(md, /your facts/);
 	assert.match(md, /## 5\. How they fit together/);
 });
+
+test('a report read in the browser says so and lists the stamp of each file', () => {
+	const stamped: ResearchSource[] = [{ n: 1, url: 'https://api.sci.gov.in/a.pdf', title: 'A', host: 'api.sci.gov.in', official: true, read: 'pdf', inBrowser: true, stamp: { url: 'https://api.sci.gov.in/a.pdf', sha256: 'ab'.repeat(32), fetchedAt: '2026-11-08T10:00:00.000Z', sig: 's' } }];
+	const md = renderMarkdown({ ...report, readIn: 'browser' }, stamped);
+	assert.match(md, /^\*Quotes were checked against the pages as read in the browser/m);
+	assert.match(md, /PDF read in the browser, SHA-256 abab/);
+});

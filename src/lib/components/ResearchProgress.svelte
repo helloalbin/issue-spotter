@@ -2,8 +2,8 @@
 	import Icon from './Icon.svelte';
 
 	type Mode = 'research' | 'identify' | 'compare' | 'verify';
-	type Props = { mode?: Mode; stage: string | null };
-	let { mode = 'research', stage }: Props = $props();
+	type Props = { mode?: Mode; stage: string | null; /** What the browser is doing right now, such as which page it is reading. */ note?: string };
+	let { mode = 'research', stage, note = '' }: Props = $props();
 
 	const STEPS: Record<Mode, { stage: string; label: string }[]> = {
 		research: [
@@ -52,6 +52,6 @@
 		{/each}
 	</ul>
 	<p class="mt-4 text-caption text-text-tertiary">
-		{mode === 'identify' ? 'This takes a few seconds.' : 'This can take a minute or two.'}
+		{note || (mode === 'identify' ? 'This takes a few seconds.' : 'This can take a minute or two.')}
 	</p>
 </section>

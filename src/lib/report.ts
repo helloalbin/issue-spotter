@@ -87,6 +87,7 @@ export function headingOf(slot: Slot, position: number): string {
  */
 export function renderMarkdown(report: Report, sources: ResearchSource[], template: Slot[] = templateFor(report.kind)): string {
 	const out: string[] = [`# ${report.title}`, ''];
+	if (report.readIn === 'browser') out.push('*Quotes were checked against the pages as read in the browser; anything taken from a PDF was also checked by a model reading the official PDF.*', '');
 	let position = 0;
 
 	for (const slot of template) {
@@ -118,7 +119,7 @@ export function renderMarkdown(report: Report, sources: ResearchSource[], templa
 	out.push('## Sources', '');
 	for (const source of sources) {
 		const kind = source.official ? 'official' : 'copy on Indian Kanoon';
-		out.push(`${source.n}. [${source.title}](${source.url}) — ${source.host}, ${kind}${source.read ? `, ${source.read === 'pdf' ? 'PDF read' : 'page read'}` : ''}`);
+		out.push(`${source.n}. [${source.title}](${source.url}) — ${source.host}, ${kind}${source.read ? `, ${source.read === 'pdf' ? 'PDF read' : 'page read'}${source.inBrowser ? ' in the browser' : ''}` : ''}${source.stamp ? `, SHA-256 ${source.stamp.sha256}, fetched ${source.stamp.fetchedAt}` : ''}`);
 	}
 	if (report.dropped > 0) {
 		out.push('', `*${report.dropped} ${report.dropped === 1 ? 'statement was' : 'statements were'} left out because the cited page did not contain the passage given for ${report.dropped === 1 ? 'it' : 'them'}.*`);

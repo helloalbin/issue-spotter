@@ -30,11 +30,16 @@
 						{source.host} ·
 						{source.official ? 'Official source' : 'A copy on Indian Kanoon, not the court’s own'}
 						{#if source.read === 'text'}
-							· Page read{source.truncated ? ' (excerpts of a long document)' : ''}
+							· Page read{source.inBrowser ? ' in your browser' : ''}{source.truncated ? ' (excerpts of a long document)' : ''}
 						{:else if source.read === 'pdf'}
-							· PDF read
+							· PDF read{source.inBrowser ? ' in your browser' : ''}{source.truncated ? ' (excerpts of a long document)' : ''}
 						{:else if readAny}
 							· Not read
+						{/if}
+						{#if source.stamp}
+							<span class="mt-0.5 block font-mono text-[10px] text-text-muted" title="SHA-256 {source.stamp.sha256}, fetched {source.stamp.fetchedAt}. This shows which file was fetched, not that text read from it is faithful.">
+								SHA-256 {source.stamp.sha256.slice(0, 12)}… · fetched {source.stamp.fetchedAt.slice(0, 10)}
+							</span>
 						{/if}
 					</span>
 				</span>

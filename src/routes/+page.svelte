@@ -154,11 +154,11 @@
 			{#if workspace.identifying}
 				<ResearchProgress mode="identify" stage="identifying" />
 			{:else if workspace.verifying}
-				<ResearchProgress mode="verify" stage={workspace.verifyStage} />
+				<ResearchProgress mode="verify" stage={workspace.verifyStage} note={workspace.gatherNote} />
 			{:else if workspace.comparing}
-				<ResearchProgress mode="compare" stage={workspace.compareStage} />
+				<ResearchProgress mode="compare" stage={workspace.compareStage} note={workspace.gatherNote} />
 			{:else if workspace.researching}
-				<ResearchProgress stage={workspace.researchStage} />
+				<ResearchProgress stage={workspace.researchStage} note={workspace.gatherNote} />
 			{:else}
 				<Progress
 					stage={workspace.stage}

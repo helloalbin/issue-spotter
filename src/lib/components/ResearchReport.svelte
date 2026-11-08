@@ -74,7 +74,7 @@
 		{:else if item.check?.status === 'confirmed'}
 			<span
 				class="ml-0.5 inline-flex align-text-bottom text-accent-text"
-				title="Confirmed: the page contains the passage quoted below"
+				title={item.check?.attested ? 'Confirmed: the page contains the passage quoted below, and a model reading the official PDF found it there too' : 'Confirmed: the page contains the passage quoted below'}
 			>
 				<Icon name="badgeCheck" size={12} />
 				<span class="sr-only">Confirmed against the page</span>
@@ -102,6 +102,12 @@
 		{brief.sources.length === 1 ? 'SOURCE' : 'SOURCES'}
 	</p>
 	<h2 class="type-h3 mt-1">{report.title}</h2>
+	{#if report.readIn === 'browser'}
+		<p class="mt-2 text-caption text-text-tertiary">
+			Quotes are checked against the pages as read in your browser. Anything taken from a PDF was
+			also checked by a model reading the official PDF.
+		</p>
+	{/if}
 </header>
 
 {#each sections as { slot, heading, position, data }}

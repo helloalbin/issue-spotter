@@ -59,6 +59,13 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 			};
 			const deadline = new Deadline(DEEP_RESEARCH_TIMEOUT_MS, DEEP_RESEARCH_TIMEOUT_MS, upstream.signal);
 			try {
+				if (intake.length === 0) {
+					// Nothing could be read, which is not the same as nothing being found: give the unit back.
+					await release(db, subject, grant.day).catch((error) => console.error('Verify quota refund failed:', error));
+					send({ error: 'The pages could not be read in your browser, so nothing was checked. It has not used any of your checks.' });
+					send({ verify: quotaInfo(subject, 1) });
+					return;
+				}
 				send({ stage: 'checking' });
 				const itemSource: Record<string, unknown> = body?.context?.itemSource && typeof body.context.itemSource === 'object' ? body.context.itemSource : {};
 

@@ -1,4 +1,5 @@
 import { auth } from '#lib/auth.svelte.js';
+import { gatherSources } from '#lib/gather.js';
 import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
 import { SAMPLES } from '#lib/samples.js';
 import { toggleSkills } from '#lib/skills.js';
@@ -16,6 +17,8 @@ import type {
 	Attachment,
 	CaseCandidate,
 	CompareEvent,
+	Gather,
+	GatheredSource,
 	QuotaInfo,
 	ResearchBrief,
 	VerifyEvent,
@@ -158,6 +161,8 @@ class Workspace {
 	/** Deep research runs in progress, which is a different job from analysing. */
 	researching = $state(false);
 	researchStage = $state<'checking' | 'searching' | 'reading' | 'writing' | null>(null);
+	/** What the browser is doing while it reads the pages a search found, for the progress view. */
+	gatherNote = $state('');
 	/** Whether the next message names two cases to compare. */
 	compareMode = $state(false);
 	/** Finding the two cases, which comes before the user confirms them. */
@@ -270,6 +275,7 @@ class Workspace {
 		this.researchMode = false;
 		this.compareMode = false;
 		this.verifyMode = false;
+		this.gatherNote = '';
 		this.verifying = false;
 		this.verifyStage = null;
 		this.researching = false;
@@ -727,6 +733,7 @@ class Workspace {
 		const run = (this.#run += 1);
 		this.#abort = new AbortController();
 		let finished = false;
+		let gather: Gather | null = null;
 
 		try {
 			const response = await fetch('/api/research', {
@@ -762,6 +769,7 @@ class Workspace {
 					const event: ResearchEvent = JSON.parse(line);
 					if ('research' in event) this.researchQuota = event.research;
 					else if ('stage' in event) this.researchStage = event.stage;
+					else if ('gather' in event) gather = event.gather;
 					else if ('brief' in event) {
 						finished = true;
 						this.thread.push({
@@ -783,6 +791,23 @@ class Workspace {
 				}
 				if (done) break;
 			}
+			if (gather && !finished) {
+				const found: Gather = gather;
+				const done = await this.#readInBrowser(
+					found,
+					'/api/research/write',
+					(sources) => ({ token: found.token, topic, facts: caseText(this.turns, ''), leads: found.context?.leads, searches: found.context?.searches, sources }),
+					(next) => (this.researchStage = next as typeof this.researchStage),
+					{ callWhenEmpty: false }
+				);
+				if (run !== this.#run) return;
+				finished = true;
+				// If the pages could not be read or written up, the first search brief is still worth having.
+				this.thread.push({ kind: 'research', added: '', attachments: [], topic, brief: done.brief ?? found.draft! });
+				this.facts = '';
+				this.researchMode = false;
+				if (done.quota) this.researchQuota = done.quota;
+			}
 			if (!finished) this.errorMessage = 'The research ended unexpectedly. Please try again.';
 		} catch (error) {
 			if (run !== this.#run) return;
@@ -800,6 +825,63 @@ class Workspace {
 				this.pending = null;
 			}
 		}
+	}
+
+	/**
+	 * The second half of a run whose pages are read in the browser: read each page the server named,
+	 * send back only the paragraphs chosen from them, and take the finished report. `stage` says where
+	 * the run has got to for the progress view. With `callWhenEmpty` the server is told even when no
+	 * page could be read, so that it can give the unit back.
+	 */
+	async #readInBrowser(
+		gather: Gather,
+		writeUrl: string,
+		body: (sources: GatheredSource[]) => unknown,
+		stage: (stage: string) => void,
+		options: { callWhenEmpty: boolean; reading?: string; writing?: string }
+	): Promise<{ brief?: ResearchBrief; error?: string; empty?: boolean; quota?: QuotaInfo }> {
+		const signal = this.#abort!.signal;
+		const run = this.#run;
+		stage(options.reading ?? 'reading');
+		const gathered = await gatherSources(gather, { headers: await auth.headers(), signal, onProgress: (note) => (this.gatherNote = note) });
+		this.gatherNote = '';
+		if (run !== this.#run || signal.aborted) return {};
+		if (gathered.length === 0 && !options.callWhenEmpty) return { empty: true };
+
+		stage(options.writing ?? 'writing');
+		const response = await fetch(writeUrl, {
+			method: 'POST',
+			signal,
+			headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+			body: JSON.stringify(body(gathered))
+		});
+		if (!response.ok || !response.body) {
+			const payload = await response.json().catch(() => null);
+			return { error: payload?.error ?? 'The report could not be completed right now.' };
+		}
+
+		const result: { brief?: ResearchBrief; error?: string; quota?: QuotaInfo } = {};
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+		while (true) {
+			const { done, value } = await reader.read();
+			buffer += decoder.decode(value, { stream: !done });
+			const lines = buffer.split('\n');
+			buffer = done ? '' : (lines.pop() ?? '');
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				if (run !== this.#run) return {};
+				const event = JSON.parse(line);
+				if ('stage' in event) stage(event.stage);
+				else if ('brief' in event) result.brief = event.brief;
+				else if ('error' in event) result.error = event.error;
+				else result.quota = event.research ?? event.compare ?? event.verify ?? result.quota;
+			}
+			if (done) break;
+		}
+		if (!result.brief && !result.error) result.error = 'The report ended unexpectedly. Please try again.';
+		return result;
 	}
 
 	/** Finds the two cases the user named and shows them for confirmation. Nothing is compared yet. */
@@ -867,6 +949,7 @@ class Workspace {
 		const run = (this.#run += 1);
 		this.#abort = new AbortController();
 		let finished = false;
+		let gather: Gather | null = null;
 
 		try {
 			const response = await fetch('/api/compare', {
@@ -902,6 +985,7 @@ class Workspace {
 					const event: CompareEvent = JSON.parse(line);
 					if ('compare' in event) this.compareQuota = event.compare;
 					else if ('stage' in event) this.compareStage = event.stage;
+					else if ('gather' in event) gather = event.gather;
 					else if ('brief' in event) {
 						finished = true;
 						exchange.brief = event.brief;
@@ -912,6 +996,23 @@ class Workspace {
 					}
 				}
 				if (done) break;
+			}
+			if (gather && !finished) {
+				const found: Gather = gather;
+				const done = await this.#readInBrowser(
+					found,
+					'/api/compare/write',
+					(sources) => ({ token: found.token, cases: exchange.cases.map(({ url, name }) => ({ url, name })), leads: found.context?.leads, searches: found.context?.searches, sources }),
+					(next) => (this.compareStage = next as typeof this.compareStage),
+					{ callWhenEmpty: true }
+				);
+				if (run !== this.#run) return;
+				finished = true;
+				if (done.quota) this.compareQuota = done.quota;
+				if (done.brief) {
+					exchange.brief = done.brief;
+					exchange.state = 'done';
+				} else this.errorMessage = done.error ?? 'The comparison could not be completed right now.';
 			}
 			if (!finished) this.errorMessage = 'The comparison ended unexpectedly. Please try again.';
 		} catch (error) {
@@ -949,6 +1050,7 @@ class Workspace {
 		const run = (this.#run += 1);
 		this.#abort = new AbortController();
 		let finished = false;
+		let gather: Gather | null = null;
 
 		try {
 			const response = await fetch('/api/verify', {
@@ -984,6 +1086,7 @@ class Workspace {
 					const event: VerifyEvent = JSON.parse(line);
 					if ('verify' in event) this.verifyQuota = event.verify;
 					else if ('stage' in event) this.verifyStage = event.stage;
+					else if ('gather' in event) gather = event.gather;
 					else if ('brief' in event) {
 						finished = true;
 						this.thread.push({ kind: 'verify', added: '', attachments: [], input, brief: event.brief });
@@ -995,6 +1098,24 @@ class Workspace {
 					}
 				}
 				if (done) break;
+			}
+			if (gather && !finished) {
+				const found: Gather = gather;
+				const done = await this.#readInBrowser(
+					found,
+					'/api/verify/write',
+					(sources) => ({ token: found.token, context: found.context, sources }),
+					(next) => (this.verifyStage = next as typeof this.verifyStage),
+					{ callWhenEmpty: true, reading: 'opening', writing: 'checking' }
+				);
+				if (run !== this.#run) return;
+				finished = true;
+				if (done.quota) this.verifyQuota = done.quota;
+				if (done.brief) {
+					this.thread.push({ kind: 'verify', added: '', attachments: [], input, brief: done.brief });
+					this.facts = '';
+					this.verifyMode = false;
+				} else this.errorMessage = done.error ?? 'The check could not be completed right now.';
 			}
 			if (!finished) this.errorMessage = 'The check ended unexpectedly. Please try again.';
 		} catch (error) {

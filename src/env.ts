@@ -92,6 +92,22 @@ export const variables = defineEnvVars({
 		description: 'Pages one IP address may add per day, across visitors.',
 		schema: (value) => positiveInt(value, 100)
 	},
+	VERIFY_MONTHLY_LIMIT: {
+		description: 'Citation checks per month for a visitor who is not signed in. Each costs less than a deep research run.',
+		schema: (value) => positiveInt(value, 1)
+	},
+	VERIFY_IP_MONTHLY_LIMIT: {
+		description: 'Citation checks per month for one IP address, across visitors who are not signed in.',
+		schema: (value) => positiveInt(value, 5)
+	},
+	VERIFY_SIGNED_IN_MONTHLY_LIMIT: {
+		description: 'Citation checks per month for a signed-in account. Tiers will set their own.',
+		schema: (value) => positiveInt(value, 3)
+	},
+	VERIFY_SIGNED_IN_IP_MONTHLY_LIMIT: {
+		description: 'Citation checks per month for one IP address, across signed-in accounts.',
+		schema: (value) => positiveInt(value, 15)
+	},
 	COMPARE_MONTHLY_LIMIT: {
 		description: 'Case comparisons per month for a visitor who is not signed in. Each costs about as much as a deep research run.',
 		schema: (value) => positiveInt(value, 1)

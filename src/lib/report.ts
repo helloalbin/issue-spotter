@@ -49,7 +49,14 @@ export const COMPARE_TEMPLATE: Slot[] = [
 	{ id: 'notConfirmed', heading: 'Not confirmed', numbered: false, number: true, min: 0, max: 8, plain: true, empty: 'Nothing further to flag.' }
 ];
 
-export const templateFor = (kind: Report['kind']): Slot[] => (kind === 'compare' ? COMPARE_TEMPLATE : RESEARCH_TEMPLATE);
+export const VERIFY_TEMPLATE: Slot[] = [
+	{ id: 'synopsis', heading: 'Summary', numbered: false, number: false, min: 1, max: 6, empty: 'No citation could be checked.' },
+	{ id: 'citations', heading: 'Citations checked', numbered: false, number: true, min: 0, max: 5, grouped: true, groupMax: 4, empty: 'No citation could be checked.' },
+	{ id: 'notConfirmed', heading: 'Not confirmed', numbered: false, number: true, min: 0, max: 8, plain: true, empty: 'Nothing further to flag.' }
+];
+
+export const templateFor = (kind: Report['kind']): Slot[] =>
+	kind === 'compare' ? COMPARE_TEMPLATE : kind === 'verify' ? VERIFY_TEMPLATE : RESEARCH_TEMPLATE;
 
 /** Cuts a statement to a word limit at a word boundary. */
 export function clampWords(text: string, max = MAX_LINE_WORDS): string {
@@ -65,8 +72,9 @@ export function clampWords(text: string, max = MAX_LINE_WORDS): string {
 /** `[1][3]` for a line's sources. */
 const marks = (line: ReportLine) => line.cites.map((n) => `[${n}]`).join('');
 
-const inferenceLabel = (kind: Report['kind']) => (kind === 'compare' ? '*(reasoning, not from a page)*' : '*(inference from your facts)*');
-const lineMarkdown = (line: ReportLine, kind: Report['kind']) => `${line.text}${marks(line) ? ' ' + marks(line) : ''}${line.basis === 'inference' ? ' ' + inferenceLabel(kind) : ''}`;
+const inferenceLabel = (kind: Report['kind']) => (kind === 'research' ? '*(inference from your facts)*' : '*(reasoning, not from a page)*');
+const MARK = { ok: '✔ ', warn: '⚠ ', fail: '✖ ' };
+const lineMarkdown = (line: ReportLine, kind: Report['kind']) => `${line.mark ? MARK[line.mark] : ''}${line.text}${marks(line) ? ' ' + marks(line) : ''}${line.basis === 'inference' ? ' ' + inferenceLabel(kind) : ''}`;
 
 /** The numbered title of a section as it is shown: "1. Governing law", "Synopsis". */
 export function headingOf(slot: Slot, position: number): string {

@@ -143,8 +143,13 @@ export type ResearchSource = {
 export type ReportLine = {
 	text: string;
 	cites: number[];
-	/** `inference`: the writer's reasoning about the user's own facts, which no page can confirm. */
-	basis: 'source' | 'inference';
+	/**
+	 * `inference`: the writer's reasoning about the user's own facts, which no page can confirm.
+	 * `app`: a result the app worked out itself from a page, such as whether a name matches.
+	 */
+	basis: 'source' | 'inference' | 'app';
+	/** How a checked item came out, for an icon: fine, worth a look, or not found. */
+	mark?: 'ok' | 'warn' | 'fail';
 	check?: ResearchCheck;
 };
 
@@ -167,7 +172,7 @@ export type ReportSection = {
  * cannot add or reorder them.
  */
 export type Report = {
-	kind: 'research' | 'compare';
+	kind: 'research' | 'compare' | 'verify';
 	title: string;
 	sections: ReportSection[];
 	/** Statements dropped because the page did not contain the quote that was given for them. */
@@ -275,6 +280,12 @@ export type CaseCandidate = {
 export type CompareEvent =
 	| { compare: QuotaInfo }
 	| { stage: 'opening' | 'treatment' | 'reading' | 'writing' }
+	| { brief: ResearchBrief }
+	| { error: string };
+
+export type VerifyEvent =
+	| { verify: QuotaInfo }
+	| { stage: 'reading' | 'finding' | 'opening' | 'checking' }
 	| { brief: ResearchBrief }
 	| { error: string };
 

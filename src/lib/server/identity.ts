@@ -7,6 +7,10 @@ import {
 	COMPARE_SIGNED_IN_IP_MONTHLY_LIMIT,
 	COMPARE_SIGNED_IN_MONTHLY_LIMIT,
 	DEEP_RESEARCH_WRITE_MODEL,
+	VERIFY_IP_MONTHLY_LIMIT,
+	VERIFY_MONTHLY_LIMIT,
+	VERIFY_SIGNED_IN_IP_MONTHLY_LIMIT,
+	VERIFY_SIGNED_IN_MONTHLY_LIMIT,
 	DEEP_RESEARCH_WRITE_MODEL_INVESTIGATIVE,
 	DEEP_RESEARCH_WRITE_MODEL_RESEARCHER,
 	DEEP_RESEARCH_IP_MONTHLY_LIMIT,
@@ -85,4 +89,17 @@ export function compareSubjectFor(locals: App.Locals): Subject {
 export function identifySubjectFor(locals: App.Locals): Subject {
 	const base = subjectFor(locals);
 	return { ...base, ns: `cmpid:${base.ns}`, limits: { anon: COMPARE_IDENTIFY_DAILY_LIMIT, ip: COMPARE_IDENTIFY_IP_DAILY_LIMIT } };
+}
+
+/** The monthly counter for checking citations. */
+export function verifySubjectFor(locals: App.Locals): Subject {
+	const base = subjectFor(locals);
+	return {
+		...base,
+		ns: `verify:${base.ns}`,
+		period: 'month',
+		limits: locals.user
+			? { anon: VERIFY_SIGNED_IN_MONTHLY_LIMIT, ip: VERIFY_SIGNED_IN_IP_MONTHLY_LIMIT }
+			: { anon: VERIFY_MONTHLY_LIMIT, ip: VERIFY_IP_MONTHLY_LIMIT }
+	};
 }

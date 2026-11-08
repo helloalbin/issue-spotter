@@ -162,3 +162,13 @@ export function closestPassage(quote: string, text: string): string | null {
 	}
 	return found.join(' … ');
 }
+
+/**
+ * A quote a model gave, made safe to show: exact if it is on the page, else the page's own closest
+ * wording (marked approximate), else null. `excerpt` is what the model saw of the page.
+ */
+export function confirmQuote(quote: string, page: string, excerpt?: string): { quote: string; approx: boolean } | null {
+	if (quoteSupported(quote, page)) return { quote, approx: false };
+	const snapped = excerpt ? closestPassage(quote, excerpt) : null;
+	return snapped ? { quote: snapped, approx: true } : null;
+}

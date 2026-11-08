@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { subjectFor } from '#lib/server/identity.js';
+import { researchSubjectFor, subjectFor } from '#lib/server/identity.js';
 import { peek, quotaInfo } from '#lib/server/quota.js';
 import type { RequestHandler } from './$types';
 
@@ -18,6 +18,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const subject = subjectFor(locals);
 	return Response.json({
 		user: locals.user && { name: locals.user.name, email: locals.user.email },
-		quota: quotaInfo(subject, await peek(db, subject))
+		quota: quotaInfo(subject, await peek(db, subject)),
+		research: quotaInfo(researchSubjectFor(locals), await peek(db, researchSubjectFor(locals)))
 	});
 };

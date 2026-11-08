@@ -92,6 +92,34 @@ export const variables = defineEnvVars({
 		description: 'Pages one IP address may add per day, across visitors.',
 		schema: (value) => positiveInt(value, 100)
 	},
+	DEEP_RESEARCH_MONTHLY_LIMIT: {
+		description: 'Deep research runs per month for a visitor who is not signed in. Each run costs several cents.',
+		schema: (value) => positiveInt(value, 1)
+	},
+	DEEP_RESEARCH_IP_MONTHLY_LIMIT: {
+		description: 'Deep research runs per month for one IP address, across visitors who are not signed in.',
+		schema: (value) => positiveInt(value, 5)
+	},
+	DEEP_RESEARCH_SIGNED_IN_MONTHLY_LIMIT: {
+		description: 'Deep research runs per month for a signed-in account. Tiers will set their own.',
+		schema: (value) => positiveInt(value, 3)
+	},
+	DEEP_RESEARCH_SIGNED_IN_IP_MONTHLY_LIMIT: {
+		description: 'Deep research runs per month for one IP address, across signed-in accounts.',
+		schema: (value) => positiveInt(value, 15)
+	},
+	DEEP_RESEARCH_MODEL: {
+		description: 'Model for deep research. Defaults to OPENAI_MODEL; set a stronger one for better briefs.',
+		schema: (value) => value || undefined
+	},
+	DEEP_RESEARCH_MAX_SEARCHES: {
+		description: 'Most web searches one deep research run may make (sent as max_tool_calls). Each is billed.',
+		schema: (value) => positiveInt(value, 12)
+	},
+	DEEP_RESEARCH_TIMEOUT_MS: {
+		description: 'Longest a deep research run may take.',
+		schema: (value) => positiveInt(value, 120000)
+	},
 	FILE_READ_DAILY_LIMIT: {
 		description: 'Files one visitor or account may upload to be read per day. Unreadable or unrelated files are refunded.',
 		schema: (value) => positiveInt(value, 10)

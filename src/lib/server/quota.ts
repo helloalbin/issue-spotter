@@ -8,7 +8,14 @@ export type QuotaLimits = { anon: number; ip: number };
  * Who a quota is counted for. `id` is an anonymous cookie id or a Firebase uid, and `ns` keeps
  * the two apart. `limits.anon` applies to `id` and `limits.ip` to the hashed IP.
  */
-export type Subject = { ns: string; id: string; ipHash: string; limits: QuotaLimits };
+export type Subject = {
+	ns: string;
+	id: string;
+	ipHash: string;
+	limits: QuotaLimits;
+	/** Counted per calendar month (UTC) instead of per day. */
+	period?: 'month';
+};
 
 export type Reservation =
 	| { ok: true; remaining: number; day: string }
@@ -32,6 +39,18 @@ export function nextReset(now = Date.now()): number {
 	return (Math.floor(now / DAY_MS) + 1) * DAY_MS;
 }
 
+/** The key a counter is kept under: the day, or the month for a monthly limit ("2026-11"). */
+export function currentPeriod(period: 'month' | undefined, now = Date.now()): string {
+	return period === 'month' ? new Date(now).toISOString().slice(0, 7) : currentDay(now);
+}
+
+/** When the counter starts over: the next midnight, or the first of next month, UTC. */
+export function periodEnd(period: 'month' | undefined, now = Date.now()): number {
+	if (period !== 'month') return nextReset(now);
+	const date = new Date(now);
+	return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+}
+
 function keysFor(subject: Subject) {
 	return {
 		anon: `${subject.ns}:a:${subject.id}`,
@@ -41,10 +60,10 @@ function keysFor(subject: Subject) {
 
 export function quotaInfo(subject: Subject, remaining: number): QuotaInfo {
 	return {
-		signedIn: subject.ns !== 'search',
+		signedIn: !subject.ns.endsWith('search'),
 		limit: subject.limits.anon,
 		remaining: Math.max(remaining, 0),
-		resetsAt: nextReset()
+		resetsAt: periodEnd(subject.period)
 	};
 }
 
@@ -60,7 +79,7 @@ export function rejectionSubject(subject: Subject, multiplier: number): Subject 
 /** Takes one unit from both the per-browser and the per-IP counter, or neither. */
 export async function reserve(db: D1Database, subject: Subject): Promise<Reservation> {
 	const { limits } = subject;
-	const day = currentDay();
+	const day = currentPeriod(subject.period);
 	const keys = keysFor(subject);
 	const [anon, ip] = await db.batch<{ count: number }>([
 		db.prepare(RESERVE).bind(keys.anon, day, limits.anon),
@@ -94,7 +113,7 @@ export async function release(db: D1Database, subject: Subject, day: string): Pr
 /** Remaining units without taking any. */
 export async function peek(db: D1Database, subject: Subject): Promise<number> {
 	const { limits } = subject;
-	const day = currentDay();
+	const day = currentPeriod(subject.period);
 	const keys = keysFor(subject);
 	const [anon, ip] = await db.batch<{ count: number }>([
 		db.prepare(PEEK).bind(keys.anon, day),

@@ -98,6 +98,36 @@ export function lookupCount(result: SpotterResult): number {
 /** A reference confirmed against a real page: the page was returned by a web search on an allowed site and its title matches. */
 export type SourceMatch = { key: string; url: string; title: string; host: string };
 
+/** One sentence of a research brief, with the numbers of the sources that back it. */
+export type ResearchSentence = {
+	text: string;
+	cites: number[];
+	/** True when it states something but no source was found for it. */
+	uncited: boolean;
+};
+
+export type ResearchBlock =
+	| { kind: 'heading'; text: string }
+	| { kind: 'paragraph'; bullet: boolean; sentences: ResearchSentence[] };
+
+export type ResearchSource = {
+	n: number;
+	url: string;
+	title: string;
+	host: string;
+	/** A court, a ministry or a statute site, as opposed to a copy of a judgment on Indian Kanoon. */
+	official: boolean;
+};
+
+/** A research brief: what was found, in cited sentences, and the pages it came from. */
+export type ResearchBrief = {
+	topic: string;
+	blocks: ResearchBlock[];
+	sources: ResearchSource[];
+	/** How many web searches the brief took. */
+	searches: number;
+};
+
 /** What produced the analysis, for the verification pane. */
 export type AnalysisMeta = { model: string; ms: number };
 
@@ -164,6 +194,15 @@ export type SpotItem =
 	| { section: 'precedents'; value: Precedent }
 	| { section: 'acts'; value: ActReference }
 	| { section: 'counterArguments'; value: CounterArgument };
+
+/** Newline-delimited JSON events streamed by POST /api/research. */
+export type ResearchEvent =
+	| { research: QuotaInfo }
+	| { stage: 'checking' | 'searching' }
+	| { brief: ResearchBrief }
+	/** The topic is not part of the user's case; nothing was spent. */
+	| { offTopic: string }
+	| { error: string };
 
 /** Newline-delimited JSON events streamed by POST /api/spot. */
 export type SpotEvent =

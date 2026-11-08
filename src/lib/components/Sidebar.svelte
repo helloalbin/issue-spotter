@@ -21,7 +21,19 @@
 	] as const;
 
 	const label = $derived(auth.user?.name ?? auth.user?.email ?? '');
+	let accountMenu = $state(false);
+	let account = $state<HTMLDivElement>();
+
+	function onWindowClick(event: MouseEvent) {
+		if (accountMenu && account && !account.contains(event.target as Node)) accountMenu = false;
+	}
+
+	function onWindowKeydown(event: KeyboardEvent) {
+		if (accountMenu && event.key === 'Escape') accountMenu = false;
+	}
 </script>
+
+<svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
 
 {#snippet item(href: string, text: string, icon: IconName, onclick?: (e: MouseEvent) => void)}
 	{@const active = page.url.pathname === href}
@@ -121,27 +133,51 @@
 
 		{#if auth.configured}
 			{#if auth.user}
-				<div class="flex items-center gap-3 rounded-md border border-border-subtle bg-surface-2 p-2">
-					<span
-						class="grid size-9 shrink-0 place-items-center rounded-pill bg-surface-3 text-sm font-semibold"
-						aria-hidden="true"
-					>
-						{label.charAt(0).toUpperCase()}
-					</span>
-					<span class="min-w-0 flex-1">
-						<span class="block truncate text-sm font-semibold">{auth.user.name ?? auth.user.email}</span>
-						{#if auth.user.name && auth.user.email}
-							<span class="block truncate text-[11px] text-text-tertiary">{auth.user.email}</span>
-						{/if}
-					</span>
+				<div bind:this={account} class="relative">
 					<button
 						type="button"
-						onclick={() => auth.signOut()}
-						aria-label="Sign out"
-						class="grid size-8 shrink-0 place-items-center rounded-md text-text-tertiary hover:text-text-primary"
+						onclick={() => (accountMenu = !accountMenu)}
+						aria-haspopup="menu"
+						aria-expanded={accountMenu}
+						class="flex w-full items-center gap-2.5 rounded-md border border-border-subtle bg-surface-2 p-2 text-left transition hover:bg-surface-3"
 					>
-						<Icon name="logOut" />
+						<span
+							class="grid size-[34px] shrink-0 place-items-center rounded-pill bg-linear-135 from-avatar-from to-avatar-to text-[15px] font-semibold text-avatar-fg"
+							aria-hidden="true"
+						>
+							{label.charAt(0).toUpperCase()}
+						</span>
+						<span class="min-w-0 flex-1">
+							<span class="block truncate text-sm leading-tight font-semibold">
+								{auth.user.name ?? auth.user.email}
+							</span>
+							{#if auth.user.name && auth.user.email}
+								<span class="block truncate text-[11px] leading-tight text-text-tertiary">
+									{auth.user.email}
+								</span>
+							{/if}
+						</span>
+						<Icon name="chevronsUpDown" size={15} class="shrink-0 text-text-tertiary" />
 					</button>
+					{#if accountMenu}
+						<div
+							role="menu"
+							class="absolute bottom-full left-0 mb-2 w-full rounded-lg border border-border-default bg-surface-3 p-1 shadow-overlay"
+						>
+							<button
+								type="button"
+								role="menuitem"
+								onclick={() => {
+									accountMenu = false;
+									auth.signOut();
+								}}
+								class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-body text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+							>
+								<Icon name="logOut" size={16} class="text-text-tertiary" />
+								Sign out
+							</button>
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<button

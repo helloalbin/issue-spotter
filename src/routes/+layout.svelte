@@ -56,7 +56,17 @@
 			>
 				<Icon name="menu" />
 			</button>
-			<span class="ml-auto"><ThemeToggle /></span>
+			<span class="ml-auto flex items-center gap-2.5">
+				<ThemeToggle />
+				{#if auth.user}
+					<span
+						class="grid size-[30px] place-items-center rounded-pill border border-border-subtle bg-linear-135 from-avatar-from to-avatar-to text-sm font-semibold text-avatar-fg"
+						aria-hidden="true"
+					>
+						{(auth.user.name ?? auth.user.email ?? '').charAt(0).toUpperCase()}
+					</span>
+				{/if}
+			</span>
 		</div>
 
 		<div class="flex min-h-0 flex-1 flex-col">

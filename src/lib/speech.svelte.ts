@@ -128,6 +128,18 @@ class Speech {
 		setTimeout(() => this.activeId !== null && this.#speak(), 50);
 	}
 
+	/** Forgets the saved speed and voice and stops any reading: back to normal speed and the automatic voice. */
+	resetPrefs() {
+		this.stop();
+		this.rate = 1;
+		this.#voiceURI = undefined;
+		try {
+			localStorage.removeItem(KEY);
+		} catch {
+			// Nothing was saved.
+		}
+	}
+
 	/** The voice to use from now on (a voice's `voiceURI`); undefined goes back to the automatic choice. */
 	setVoice(voiceURI: string | undefined) {
 		this.#voiceURI = voiceURI;

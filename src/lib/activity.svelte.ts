@@ -1,6 +1,7 @@
 import { emptyActivity, parseActivity, recordRun } from '#lib/activity.js';
 import type { Activity, Run } from '#lib/activity.js';
 import { auth } from '#lib/auth.svelte.js';
+import { activityKey } from '#lib/data-controls.js';
 
 /**
  * The tally of whoever is using the app, read from and written to this browser's own storage. Each
@@ -13,7 +14,7 @@ class ActivityStore {
 
 	/** Loads the tally of whoever is acting now, when that has changed. */
 	sync() {
-		const key = `legalspotter:activity:${auth.user?.email ?? 'anonymous'}`;
+		const key = activityKey(auth.user?.email);
 		if (key === this.#key) return;
 		this.#key = key;
 		try {

@@ -11,7 +11,7 @@
 	const SECTIONS: { label: string; icon: IconName; href?: string }[] = [
 		{ label: 'Appearance', icon: 'sun', href: '/settings/appearance' },
 		{ label: 'Usage', icon: 'gauge', href: '/settings/usage' },
-		{ label: 'Data controls', icon: 'database' },
+		{ label: 'Data controls', icon: 'database', href: '/settings/data' },
 		{ label: 'Account', icon: 'circleUser' }
 	];
 

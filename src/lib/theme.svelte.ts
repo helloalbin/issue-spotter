@@ -44,6 +44,17 @@ class Theme {
 		this.#apply();
 	}
 
+	/** Back to following the device, and forget the saved choice. */
+	reset() {
+		this.mode = 'system';
+		try {
+			localStorage.removeItem(KEY);
+		} catch {
+			// Nothing was saved.
+		}
+		this.#apply();
+	}
+
 	/** The header toggle: the opposite of what is showing now. */
 	toggle() {
 		this.set(this.resolved === 'light' ? 'dark' : 'light');

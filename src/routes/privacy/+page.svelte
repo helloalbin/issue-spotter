@@ -161,9 +161,20 @@
 			leaves your device.
 		</li>
 		<li>
+			<code>legalspotter:speech</code> in local storage: your reading speed and voice for Read
+			aloud. It never leaves your device.
+		</li>
+		<li>
+			<code>legalspotter:activity:…</code> in local storage: your activity numbers, kept under your
+			email address if you are signed in. It never leaves your device.
+		</li>
+		<li>
 			If you sign in, Firebase keeps a sign-in session in your browser so you stay signed in.
 		</li>
 	</ul>
+	<p>
+		You can see what is stored, download a copy and clear it under Settings, then Data controls.
+	</p>
 	<p>
 		We do not use advertising or analytics trackers, and the site loads its fonts from our own
 		server.

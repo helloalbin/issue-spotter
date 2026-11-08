@@ -72,6 +72,18 @@ export const variables = defineEnvVars({
 		description: 'Output token cap for the full analysis call.',
 		schema: (value) => positiveInt(value, 2000)
 	},
+	CLASSIFIER_TIMEOUT_MS: {
+		description: 'Longest the legal-or-not classifier may take. If it times out the analysis proceeds.',
+		schema: (value) => positiveInt(value, 8000)
+	},
+	PROVIDER_IDLE_TIMEOUT_MS: {
+		description: 'Longest the analysis call may go without a response or a new chunk before it is treated as stalled.',
+		schema: (value) => positiveInt(value, 20000)
+	},
+	ANALYSIS_TOTAL_TIMEOUT_MS: {
+		description: 'Longest the whole analysis call may take, even while it keeps streaming.',
+		schema: (value) => positiveInt(value, 90000)
+	},
 	OPENAI_MODEL: {
 		description: 'Model name used for issue-spotting analysis.',
 		schema: (value) => value || 'gpt-4o-mini'

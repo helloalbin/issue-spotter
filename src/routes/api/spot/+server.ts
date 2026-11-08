@@ -1,12 +1,16 @@
 import { env } from 'cloudflare:workers';
 import {
 	ANALYSIS_MAX_TOKENS,
+	ANALYSIS_TOTAL_TIMEOUT_MS,
 	CLASSIFIER_MAX_TOKENS,
+	CLASSIFIER_TIMEOUT_MS,
 	OPENAI_API_KEY,
 	OPENAI_BASE_URL,
 	OPENAI_MODEL,
+	PROVIDER_IDLE_TIMEOUT_MS,
 	QUOTA_REJECTION_MULTIPLIER
 } from '$app/env/private';
+import { Deadline } from '#lib/server/deadline.js';
 import { subjectFor } from '#lib/server/identity.js';
 import { SectionParser } from '#lib/server/section-stream.js';
 import { quotaInfo, rejectionSubject, release, reserve } from '#lib/server/quota.js';
@@ -73,6 +77,30 @@ function normalizeActs(value: unknown): ActReference[] {
 
 class SpotError extends Error {}
 
+const TIMEOUT_MESSAGE = 'The model provider took too long to respond. Please try again.';
+
+/**
+ * Runs one provider call under a deadline. A stall or an overrun becomes a SpotError (so the
+ * search is refunded and the user sees a clear message); the user's own abort passes through.
+ */
+async function underDeadline<T>(
+	label: string,
+	deadline: Deadline,
+	run: () => Promise<T>
+): Promise<T> {
+	try {
+		return await run();
+	} catch (error) {
+		if (deadline.timedOut) {
+			console.error(`Model provider ${label} call timed out (${deadline.reason}).`);
+			throw new SpotError(TIMEOUT_MESSAGE);
+		}
+		throw error;
+	} finally {
+		deadline.dispose();
+	}
+}
+
 type ChatOptions = {
 	label: 'classifier' | 'analysis';
 	system: string;
@@ -88,11 +116,21 @@ type Usage = { promptTokens: number | null; completionTokens: number | null };
 type ChatResult = { content: string; usage: Usage };
 
 async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<ChatResult> {
+	const deadline = new Deadline(CLASSIFIER_TIMEOUT_MS, CLASSIFIER_TIMEOUT_MS);
+	return underDeadline(options.label, deadline, () => chatOnce(fetchFn, options, deadline.signal));
+}
+
+async function chatOnce(
+	fetchFn: typeof fetch,
+	options: ChatOptions,
+	signal: AbortSignal
+): Promise<ChatResult> {
 	let response: Response;
 
 	try {
 		response = await fetchFn(`${OPENAI_BASE_URL}/chat/completions`, {
 			method: 'POST',
+			signal,
 			headers: {
 				Authorization: ['Bearer', OPENAI_API_KEY].join(' '),
 				'Content-Type': 'application/json'
@@ -109,6 +147,7 @@ async function chat(fetchFn: typeof fetch, options: ChatOptions): Promise<ChatRe
 			})
 		});
 	} catch (error) {
+		if (signal.aborted) throw error;
 		console.error('Model provider request failed:', error, (error as Error)?.cause);
 		throw new SpotError('Unable to reach the model provider.');
 	}
@@ -147,9 +186,22 @@ function readUsage(payload: any): Usage {
 async function chatStream(
 	fetchFn: typeof fetch,
 	options: ChatOptions,
-	signal: AbortSignal,
+	cancel: AbortSignal,
 	onText: (text: string) => void
 ): Promise<ChatResult> {
+	const deadline = new Deadline(PROVIDER_IDLE_TIMEOUT_MS, ANALYSIS_TOTAL_TIMEOUT_MS, cancel);
+	return underDeadline(options.label, deadline, () =>
+		chatStreamOnce(fetchFn, options, deadline, onText)
+	);
+}
+
+async function chatStreamOnce(
+	fetchFn: typeof fetch,
+	options: ChatOptions,
+	deadline: Deadline,
+	onText: (text: string) => void
+): Promise<ChatResult> {
+	const signal = deadline.signal;
 	let response: Response;
 
 	try {
@@ -184,6 +236,9 @@ async function chatStream(
 		throw new SpotError(`Analysis request failed (${response.status}).`);
 	}
 
+	// The response headers arrived, so the provider is alive; each chunk below keeps it that way.
+	deadline.touch();
+
 	let content = '';
 	let usage: Usage = { promptTokens: null, completionTokens: null };
 
@@ -201,6 +256,7 @@ async function chatStream(
 
 		while (true) {
 			const { done, value } = await reader.read();
+			deadline.touch();
 			buffer += decoder.decode(value, { stream: !done });
 			const lines = buffer.split('\n');
 			buffer = done ? '' : (lines.pop() ?? '');

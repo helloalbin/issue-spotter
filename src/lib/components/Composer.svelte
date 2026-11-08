@@ -96,7 +96,7 @@
 			autocomplete="off"
 			rows={docked ? 2 : 5}
 			placeholder={docked
-				? 'Paste new facts to start another analysis…'
+				? 'Add more facts to this case…'
 				: 'Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord about a broken light and a leaking pipe…'}
 			class="w-full resize-none bg-transparent text-md leading-normal text-text-primary outline-none {docked
 				? ''
@@ -130,7 +130,7 @@
 			</div>
 
 			<div class="flex items-center gap-2">
-				<Button variant="ghost" class="px-3 py-[9px]" onclick={() => workspace.clearAll()}>Clear</Button>
+				<Button variant="ghost" class="px-3 py-[9px]" onclick={() => workspace.clearDraft()}>Clear</Button>
 				<Button
 					variant="primary"
 					type="submit"
@@ -145,11 +145,18 @@
 	{/if}
 </form>
 
-{#if quota}
-	<p class="mt-2 text-right text-caption tabular-nums text-text-tertiary">
-		{quota.remaining} of {quota.limit}
-		{quota.signedIn ? '' : 'free '}searches left today
-	</p>
+{#if quota || (docked && !workspace.isLoading)}
+	<div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 text-caption text-text-tertiary">
+		{#if docked && !workspace.isLoading}
+			<p>Added facts join the case above and the analysis runs again. It counts as one search.</p>
+		{/if}
+		{#if quota}
+			<p class="ml-auto tabular-nums">
+				{quota.remaining} of {quota.limit}
+				{quota.signedIn ? '' : 'free '}searches left today
+			</p>
+		{/if}
+	</div>
 {/if}
 {#if workspace.showContextTip}
 	<p class="mt-2 text-caption text-text-tertiary">

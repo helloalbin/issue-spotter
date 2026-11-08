@@ -2,8 +2,14 @@
 	import type { SpotSection, Streamed } from '#lib/spotter.js';
 	import Icon from './Icon.svelte';
 
-	type Props = { stage: 'verifying' | 'analyzing' | null; streamed: Streamed; closed: SpotSection[] };
-	let { stage, streamed, closed }: Props = $props();
+	type Props = {
+		stage: 'verifying' | 'analyzing' | null;
+		streamed: Streamed;
+		closed: SpotSection[];
+		/** Whether the facts being read include ones added to an earlier case. */
+		followUp?: boolean;
+	};
+	let { stage, streamed, closed, followUp = false }: Props = $props();
 
 	const sections = [
 		{ key: 'issues', label: 'Identifying primary legal issues' },
@@ -67,8 +73,10 @@
 		<div>
 			<h2 class="type-h4">Spotting issues</h2>
 			<p class="text-sm text-text-tertiary">
-				Working through the facts you provided. This usually takes a few seconds, and you can stop
-				anytime.
+				{followUp
+					? 'Reading the whole case again, with the facts you added.'
+					: 'Working through the facts you provided.'}
+				This usually takes a few seconds, and you can stop anytime.
 			</p>
 		</div>
 	</div>

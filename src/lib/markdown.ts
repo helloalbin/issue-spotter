@@ -5,11 +5,12 @@ import type { SourceMatch, SpotterResult } from '#lib/spotter.js';
 /** The analysis as Markdown, for the "Copy as Markdown" action. */
 /** Verified links, by reference key, replace the search links where there are any. */
 export function toMarkdown(
-	facts: string,
+	turns: string[],
 	result: SpotterResult,
 	sources: Record<string, SourceMatch> = {}
 ): string {
-	const lines: string[] = ['# Issue analysis', '', '## Case facts', '', facts.trim(), ''];
+	const lines: string[] = ['# Issue analysis', '', '## Case facts', '', (turns[0] ?? '').trim(), ''];
+	turns.slice(1).forEach((turn) => lines.push('### Added facts', '', turn.trim(), ''));
 
 	lines.push('## Primary legal issues', '');
 	result.issues.forEach((item, index) => lines.push(`${index + 1}. ${item}`));

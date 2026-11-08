@@ -64,10 +64,15 @@
 
 <main id="main" class="flex-1 overflow-y-auto">
 	{#if workspace.isLoading}
-		<Progress stage={workspace.stage} streamed={workspace.streamed} closed={workspace.closed} />
+		<Progress
+			stage={workspace.stage}
+			streamed={workspace.streamed}
+			closed={workspace.closed}
+			followUp={workspace.turns.length > 0}
+		/>
 	{:else if workspace.result}
 		<AnalysisResult
-			facts={workspace.submittedFacts}
+			turns={workspace.turns}
 			result={workspace.result}
 			onEdit={() => workspace.editFacts()}
 		/>

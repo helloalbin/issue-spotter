@@ -6,10 +6,11 @@
 	import type { SpotterResult } from '#lib/spotter.js';
 	import Icon from './Icon.svelte';
 
-	type Props = { facts: string; result: SpotterResult; onEdit: () => void };
-	let { facts, result, onEdit }: Props = $props();
+	type Props = { turns: string[]; result: SpotterResult; onEdit: () => void };
+	let { turns, result, onEdit }: Props = $props();
 
-	let copied = $state<'facts' | 'markdown' | null>(null);
+	/** Which copy button shows "Copied": a message by its position, or the whole analysis. */
+	let copied = $state<number | 'markdown' | null>(null);
 	let verifiedCount = $derived(Object.keys(workspace.sources).length);
 
 	const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
@@ -22,7 +23,7 @@
 		].join(' · ')
 	);
 
-	async function copy(kind: 'facts' | 'markdown', text: string) {
+	async function copy(kind: number | 'markdown', text: string) {
 		try {
 			await navigator.clipboard.writeText(text);
 			copied = kind;
@@ -41,25 +42,37 @@
 {/snippet}
 
 <article class="mx-auto w-full max-w-3xl px-6 py-8">
-	<div class="ml-auto max-w-xl rounded-xl border border-border-default bg-surface-1 p-4">
-		<div class="flex items-center justify-between">
-			<span class="type-meta tracking-widest text-text-tertiary">CASE FACTS</span>
-			<span class="flex items-center gap-3 text-caption text-text-tertiary">
-				<button
-					type="button"
-					onclick={() => copy('facts', facts)}
-					class="flex items-center gap-1 hover:text-text-primary"
-				>
-					<Icon name={copied === 'facts' ? 'check' : 'copy'} size={12} />
-					{copied === 'facts' ? 'Copied' : 'Copy'}
-				</button>
-				<button type="button" onclick={onEdit} class="flex items-center gap-1 hover:text-text-primary">
-					<Icon name="pencil" size={12} />
-					Edit
-				</button>
-			</span>
-		</div>
-		<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{facts}</p>
+	<div class="flex flex-col gap-3">
+		{#each turns as turn, index}
+			<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
+				<div class="flex items-center justify-between">
+					<span class="type-meta tracking-widest text-text-tertiary">
+						{index === 0 ? 'CASE FACTS' : 'ADDED FACTS'}
+					</span>
+					<span class="flex items-center gap-3 text-caption text-text-tertiary">
+						<button
+							type="button"
+							onclick={() => copy(index, turn)}
+							class="flex items-center gap-1 hover:text-text-primary"
+						>
+							<Icon name={copied === index ? 'check' : 'copy'} size={12} />
+							{copied === index ? 'Copied' : 'Copy'}
+						</button>
+						{#if index === 0}
+							<button
+								type="button"
+								onclick={onEdit}
+								class="flex items-center gap-1 hover:text-text-primary"
+							>
+								<Icon name="pencil" size={12} />
+								Edit
+							</button>
+						{/if}
+					</span>
+				</div>
+				<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{turn}</p>
+			</div>
+		{/each}
 	</div>
 
 	<header class="mt-8 flex items-center gap-3">
@@ -232,7 +245,7 @@
 	<div class="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">
 		<button
 			type="button"
-			onclick={() => copy('markdown', toMarkdown(facts, result, workspace.sources))}
+			onclick={() => copy('markdown', toMarkdown(turns, result, workspace.sources))}
 			class="flex items-center gap-2 rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition hover:bg-surface-2 hover:text-text-primary"
 		>
 			<Icon name={copied === 'markdown' ? 'check' : 'copy'} size={14} />

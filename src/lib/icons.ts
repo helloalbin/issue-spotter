@@ -1,4 +1,5 @@
 import {
+	ArrowUp,
 	BadgeCheck,
 	BookMarked,
 	BookOpen,
@@ -41,6 +42,7 @@ import {
 
 /** Every icon the UI uses, by the name passed to <Icon>. Add an entry here to use a new one. */
 export const icons = {
+	arrowUp: ArrowUp,
 	badgeCheck: BadgeCheck,
 	bookMarked: BookMarked,
 	bookOpen: BookOpen,

@@ -137,8 +137,8 @@
 					class="gap-[7px] px-4 py-2.5 shadow-button"
 					disabled={workspace.overLimit || outOfSearches}
 				>
-					<Icon name="sparkles" />
-					Spot issues
+					<Icon name={workspace.followUp ? 'arrowUp' : 'sparkles'} />
+					{workspace.followUp ? 'Add facts' : 'Spot issues'}
 				</Button>
 			</div>
 		</div>
@@ -148,7 +148,7 @@
 {#if quota || (docked && !workspace.isLoading)}
 	<div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 text-caption text-text-tertiary">
 		{#if docked && !workspace.isLoading}
-			<p>Added facts join the case above and the analysis runs again. It counts as one search.</p>
+			<p>Your facts are added to this case and the analysis is updated below. It counts as one search.</p>
 		{/if}
 		{#if quota}
 			<p class="ml-auto tabular-nums">

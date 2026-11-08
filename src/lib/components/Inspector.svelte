@@ -14,10 +14,14 @@
 		result
 			? [
 					{ label: 'Read the facts', count: null },
+					...(result.summary ? [{ label: 'Summarized the case', count: result.summary.length }] : []),
 					{ label: 'Identified primary issues', count: result.issues.length },
 					{ label: 'Matched governing doctrines', count: result.doctrines.length },
 					{ label: 'Found landmark precedents', count: result.precedents.length },
-					{ label: 'Located acts & sections', count: result.acts.length }
+					{ label: 'Located acts & sections', count: result.acts.length },
+					...(result.counterArguments
+						? [{ label: 'Prepared counter-arguments', count: result.counterArguments.length }]
+						: [])
 				]
 			: []
 	);

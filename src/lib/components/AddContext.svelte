@@ -1,74 +1,100 @@
 <script lang="ts">
+	import { SKILLS } from '#lib/skills.js';
+	import { workspace } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
 
 	/** maxHeight is what fits above the button, so the drawer scrolls instead of leaving the screen. */
-	type Props = { id: string; maxHeight: number };
-	let { id, maxHeight }: Props = $props();
+	type Props = { id: string; maxHeight: number; onClose: () => void };
+	let { id, maxHeight, onClose }: Props = $props();
 
-	const sources = [
-		{ label: 'Upload files', hint: 'PDF, DOCX, or images', icon: 'paperclip' },
-		{ label: 'Add a URL', hint: 'Case, statute, or article link', icon: 'link' }
-	] as const;
+	let url = $state('');
+	let urlInput = $state<HTMLInputElement>();
 
-	const skills = [
-		{ label: 'Draft', icon: 'squarePen' },
-		{ label: 'Deep research', icon: 'telescope' },
-		{ label: 'Compare cases', icon: 'gitCompare' },
-		{ label: 'Counter-args', icon: 'swords' },
-		{ label: 'Verify cites', icon: 'badgeCheck' },
-		{ label: 'Summarize', icon: 'list' }
-	] as const;
+	let selected = $derived(workspace.skills.length);
+	let adding = $derived(workspace.urlStatus === 'loading');
+
+	async function addUrl() {
+		if (adding || !url.trim()) return;
+		if (await workspace.addUrl(url)) {
+			url = '';
+			onClose();
+		}
+	}
 </script>
 
 <!--
-	The drawer from the design. Attaching files or links and applying skills are not wired to the
-	backend yet, so every control is shown disabled and labelled instead of pretending to work.
+	The drawer from the design. Skills that change the analysis (Summarize, Counter-args) toggle, and
+	a link to a page on an allowed legal site can be added as background. Uploading files and the
+	other skills are not built yet, so they are shown disabled and labelled.
 -->
 <div
 	{id}
 	style="max-height: {maxHeight}px"
 	role="dialog"
 	aria-label="Add context"
-	class="absolute bottom-full left-0 z-20 mb-2 flex w-76 max-w-[calc(100vw-3rem)] flex-col gap-1 rounded-xl border border-border-default bg-surface-3 p-2 leading-tight shadow-overlay overflow-y-auto"
+	class="absolute bottom-full left-0 z-20 mb-2 flex w-76 max-w-[calc(100vw-3rem)] flex-col gap-1 overflow-y-auto rounded-xl border border-border-default bg-surface-3 p-2 leading-tight shadow-overlay"
 >
 	<div class="px-2.5 pt-2 pb-1.5">
 		<p class="text-sm font-semibold text-text-primary">Add context</p>
 		<p class="text-[11px] text-text-tertiary">Attach context, link a source, or apply a skill.</p>
 	</div>
 
-	{#each sources as source}
-		<button
-			type="button"
-			disabled
-			class="flex items-center gap-[11px] rounded-md px-2.5 py-[9px] text-left opacity-60"
+	<button
+		type="button"
+		disabled
+		class="flex items-center gap-[11px] rounded-md px-2.5 py-[9px] text-left opacity-60"
+	>
+		<span
+			class="grid size-[30px] shrink-0 place-items-center rounded-md border border-border-subtle bg-surface-2 text-text-secondary"
 		>
-			<span
-				class="grid size-[30px] shrink-0 place-items-center rounded-md border border-border-subtle bg-surface-2 text-text-secondary"
-			>
-				<Icon name={source.icon} />
-			</span>
-			<span class="min-w-0 flex-1">
-				<span class="block text-sm font-medium text-text-primary">{source.label}</span>
-				<span class="mt-px block text-[11px] text-text-tertiary">{source.hint}</span>
-			</span>
-			<span class="text-[11px] text-text-tertiary">Soon</span>
-		</button>
-	{/each}
+			<Icon name="paperclip" />
+		</span>
+		<span class="min-w-0 flex-1">
+			<span class="block text-sm font-medium text-text-primary">Upload files</span>
+			<span class="mt-px block text-[11px] text-text-tertiary">PDF, DOCX, or images</span>
+		</span>
+		<span class="text-[11px] text-text-tertiary">Soon</span>
+	</button>
+
+	<button
+		type="button"
+		onclick={() => urlInput?.focus()}
+		class="flex items-center gap-[11px] rounded-md px-2.5 py-[9px] text-left transition hover:bg-surface-2"
+	>
+		<span
+			class="grid size-[30px] shrink-0 place-items-center rounded-md border border-border-subtle bg-surface-2 text-text-secondary"
+		>
+			<Icon name="link" />
+		</span>
+		<span class="min-w-0 flex-1">
+			<span class="block text-sm font-medium text-text-primary">Add a URL</span>
+			<span class="mt-px block text-[11px] text-text-tertiary">Case or statute page</span>
+		</span>
+	</button>
 
 	<div class="mt-1 flex flex-col gap-3 border-t border-border-subtle pt-3">
 		<div class="flex items-center justify-between px-0.5">
 			<p class="font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">SKILLS</p>
-			<p class="text-[11px] text-text-tertiary">Coming soon</p>
+			<p class="text-[11px] text-text-tertiary">{selected > 0 ? `${selected} selected` : '2 available'}</p>
 		</div>
 		<div class="grid grid-cols-2 gap-2">
-			{#each skills as skill}
+			{#each SKILLS as skill}
+				{@const on = workspace.skills.includes(skill.id as 'summarize' | 'counter-arguments')}
 				<button
 					type="button"
-					disabled
-					class="flex h-16 flex-col items-center justify-center gap-[7px] rounded-md border border-border-subtle px-2 py-3 text-text-secondary opacity-60"
+					disabled={!skill.available}
+					aria-pressed={skill.available ? on : undefined}
+					onclick={() => workspace.toggleSkill(skill.id as 'summarize' | 'counter-arguments')}
+					title={skill.available ? undefined : 'Coming soon'}
+					class="relative flex h-16 flex-col items-center justify-center gap-[7px] rounded-md border px-2 py-3 transition {on
+						? 'border-border-strong bg-surface-2 text-text-primary'
+						: 'border-border-subtle text-text-secondary'} {skill.available ? 'hover:bg-surface-2' : 'opacity-60'}"
 				>
-					<Icon name={skill.icon} size={18} class="text-text-tertiary" />
+					<Icon name={skill.icon} size={18} class={on ? 'text-accent-text' : 'text-text-tertiary'} />
 					<span class="text-caption leading-none font-medium">{skill.label}</span>
+					{#if !skill.available}
+						<span class="absolute top-1 right-1.5 text-[10px] text-text-tertiary">Soon</span>
+					{/if}
 				</button>
 			{/each}
 		</div>
@@ -83,23 +109,38 @@
 		</label>
 		<div class="flex gap-2">
 			<input
+				bind:this={urlInput}
+				bind:value={url}
 				id="{id}-url"
 				type="url"
 				name="source-url"
 				inputmode="url"
 				autocomplete="off"
 				spellcheck="false"
-				disabled
 				placeholder="https://indiankanoon.org/…"
-				class="min-w-0 flex-1 rounded-md border border-border-default bg-surface-2 px-[11px] py-[9px] text-sm text-text-primary opacity-60"
+				onkeydown={(event) => {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						addUrl();
+					}
+				}}
+				class="min-w-0 flex-1 rounded-md border border-border-default bg-surface-2 px-[11px] py-[9px] text-sm text-text-primary"
 			/>
 			<button
 				type="button"
-				disabled
-				class="rounded-md border border-border-default bg-surface-1 px-3.5 py-[9px] text-sm text-text-secondary opacity-60"
+				onclick={addUrl}
+				disabled={adding || !url.trim()}
+				class="rounded-md border border-border-default bg-surface-1 px-3.5 py-[9px] text-sm text-text-secondary transition hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
 			>
-				Add
+				{adding ? 'Adding…' : 'Add'}
 			</button>
 		</div>
+		{#if workspace.urlError}
+			<p role="alert" class="text-caption leading-snug text-danger">{workspace.urlError}</p>
+		{:else}
+			<p class="text-[11px] leading-snug text-text-tertiary">
+				Pages from Indian Kanoon, India Code and the Supreme Court of India.
+			</p>
+		{/if}
 	</div>
 </div>

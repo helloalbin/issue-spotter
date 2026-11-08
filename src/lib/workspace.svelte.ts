@@ -1,9 +1,11 @@
 import { auth } from '#lib/auth.svelte.js';
 import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
 import { SAMPLES } from '#lib/samples.js';
-import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
+import type { ActiveSkill } from '#lib/skills.js';
+import { MAX_ATTACHMENTS, MAX_CONTEXT_CHARS, MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 import type {
 	AnalysisMeta,
+	Attachment,
 	QuotaInfo,
 	SpotEvent,
 	SourceMatch,
@@ -19,6 +21,8 @@ export const WIDE_SCREEN = '(min-width: 1024px)';
 export type Exchange = {
 	/** What the user typed, exactly. */
 	added: string;
+	/** The pages attached with this message. */
+	attachments: Attachment[];
 	/** The analysis of the whole case up to and including this message. */
 	result: SpotterResult;
 	meta: AnalysisMeta | null;
@@ -28,6 +32,10 @@ export type Exchange = {
 	verification: 'idle' | 'running' | 'done';
 };
 
+function emptyStreamed(): Streamed {
+	return { summary: [], counterArguments: [], issues: [], doctrines: [], precedents: [], acts: [] };
+}
+
 /**
  * The conversation. It lives outside any page so that opening a Learn page and coming back keeps
  * it. Each message the user adds is analysed together with everything before it, and its analysis
@@ -36,6 +44,15 @@ export type Exchange = {
 class Workspace {
 	/** The draft: what is about to be sent. */
 	facts = $state('');
+	/** Skills switched on for the next analyses. They stay on until switched off. */
+	skills = $state<ActiveSkill[]>([]);
+	/** The skills the analysis in progress was started with, which decide what its progress shows. */
+	runSkills = $state<ActiveSkill[]>([]);
+	/** Pages attached to the message being written. */
+	draftAttachments = $state<Attachment[]>([]);
+	/** Adding a page fetches it, which takes a moment and can fail. */
+	urlStatus = $state<'idle' | 'loading'>('idle');
+	urlError = $state('');
 	/** Every message sent so far, each with its analysis, oldest first. */
 	thread = $state<Exchange[]>([]);
 	/** The message being analysed right now, shown as a bubble once there is a conversation. */
@@ -47,7 +64,7 @@ class Workspace {
 	/** Live updates from the stream win over the value loaded with the page. */
 	liveQuota = $state<QuotaInfo | null>(null);
 	/** Entries found so far while the analysis is still being written, by section. */
-	streamed = $state<Streamed>({ issues: [], doctrines: [], precedents: [], acts: [] });
+	streamed = $state<Streamed>(emptyStreamed());
 	/** Sections the model has finished writing. */
 	closed = $state<SpotSection[]>([]);
 	/** The verification pane beside the results. */
@@ -59,6 +76,8 @@ class Workspace {
 	followUp = $derived(this.thread.length > 0);
 	/** The messages of the case so far. */
 	turns = $derived(this.thread.map((exchange) => exchange.added));
+	/** Every page attached so far, in the order they were added. */
+	attachments = $derived([...this.thread.flatMap((exchange) => exchange.attachments), ...this.draftAttachments]);
 
 	/** The whole case, which is what the limit applies to, not just the draft. */
 	charCount = $derived(caseText(this.turns, this.facts).length);
@@ -114,6 +133,68 @@ class Workspace {
 		this.errorMessage = '';
 		this.notice = '';
 		this.thread = [];
+		this.draftAttachments = [];
+		this.urlError = '';
+	}
+
+	toggleSkill(skill: ActiveSkill) {
+		this.skills = this.skills.includes(skill)
+			? this.skills.filter((active) => active !== skill)
+			: [...this.skills, skill];
+	}
+
+	/**
+	 * Fetches a page from an allowed legal site on the server and attaches its text to the message
+	 * being written. Returns whether it was added.
+	 */
+	async addUrl(raw: string): Promise<boolean> {
+		const url = raw.trim();
+		this.urlError = '';
+		if (!url) return false;
+		if (this.attachments.length >= MAX_ATTACHMENTS) {
+			this.urlError = `You can attach up to ${MAX_ATTACHMENTS} pages to a case.`;
+			return false;
+		}
+
+		this.urlStatus = 'loading';
+		try {
+			const response = await fetch('/api/source', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+				body: JSON.stringify({ url })
+			});
+			const payload = await response.json().catch(() => null);
+
+			if (!response.ok) {
+				this.urlError = payload?.error ?? 'That page could not be added.';
+				if (payload?.code === 'auth_invalid') await auth.signOut();
+				return false;
+			}
+
+			const page: Attachment = payload.attachment;
+			if (this.attachments.some((existing) => existing.url === page.url)) {
+				this.urlError = 'That page is already attached.';
+				return false;
+			}
+			const total = this.attachments.reduce((sum, existing) => sum + existing.text.length, 0);
+			if (total + page.text.length > MAX_CONTEXT_CHARS) {
+				this.urlError = 'The attached pages are already as long as one case can hold. Remove one first.';
+				return false;
+			}
+
+			this.draftAttachments.push(page);
+			return true;
+		} catch {
+			this.urlError = 'Network error. Please try again.';
+			return false;
+		} finally {
+			this.urlStatus = 'idle';
+		}
+	}
+
+	/** Takes back a page attached to the message being written. */
+	removeAttachment(url: string) {
+		this.draftAttachments = this.draftAttachments.filter((page) => page.url !== url);
 	}
 
 	/**
@@ -124,6 +205,7 @@ class Workspace {
 		const last = this.thread.pop();
 		if (!last) return;
 		this.facts = last.added;
+		this.draftAttachments = last.attachments;
 		this.errorMessage = '';
 		this.notice = '';
 	}
@@ -147,7 +229,9 @@ class Workspace {
 		} else if ('item' in event) {
 			if (event.item.section === 'acts') this.streamed.acts.push(event.item.value);
 			else if (event.item.section === 'precedents') this.streamed.precedents.push(event.item.value);
-			else this.streamed[event.item.section].push(event.item.value);
+			else if (event.item.section === 'counterArguments') {
+				this.streamed.counterArguments.push(event.item.value);
+			} else this.streamed[event.item.section].push(event.item.value);
 		} else if ('meta' in event) {
 			this.#meta = event.meta;
 		} else if ('sectionDone' in event) {
@@ -155,10 +239,15 @@ class Workspace {
 		} else if ('result' in event) {
 			this.thread.push({
 				added,
+				attachments: this.draftAttachments,
 				meta: this.#meta,
 				sources: {},
 				verification: 'idle',
 				result: {
+					...(Array.isArray(event.result?.summary) && { summary: event.result.summary }),
+					...(Array.isArray(event.result?.counterArguments) && {
+						counterArguments: event.result.counterArguments
+					}),
 					jurisdiction:
 						typeof event.result?.jurisdiction === 'string' ? event.result.jurisdiction : undefined,
 					issues: Array.isArray(event.result?.issues) ? event.result.issues : [],
@@ -168,6 +257,7 @@ class Workspace {
 				}
 			});
 			this.facts = '';
+			this.draftAttachments = [];
 			this.pending = null;
 			// The answer is complete. Anything the server sends after it (verified links) fills in
 			// later, so the results are shown now instead of waiting for it.
@@ -221,7 +311,8 @@ class Workspace {
 
 		this.isLoading = true;
 		this.pending = added;
-		this.streamed = { issues: [], doctrines: [], precedents: [], acts: [] };
+		this.streamed = emptyStreamed();
+		this.runSkills = [...this.skills];
 		this.closed = [];
 		this.#meta = null;
 		this.#abort?.abort();
@@ -237,7 +328,16 @@ class Workspace {
 					'content-type': 'application/json',
 					...(await auth.headers())
 				},
-				body: JSON.stringify({ facts: text })
+				body: JSON.stringify({
+					facts: text,
+					skills: this.runSkills,
+					context: this.attachments.map(({ url, title, text, truncated }) => ({
+						url,
+						title,
+						text,
+						truncated
+					}))
+				})
 			});
 
 			if (!response.ok || !response.body) {

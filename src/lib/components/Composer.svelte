@@ -2,6 +2,7 @@
 	import { workspace } from '#lib/workspace.svelte.js';
 	import { MAX_FACTS } from '#lib/spotter.js';
 	import type { QuotaInfo } from '#lib/spotter.js';
+	import { SKILLS } from '#lib/skills.js';
 	import AddContext from './AddContext.svelte';
 	import Button from './Button.svelte';
 	import Icon from './Icon.svelte';
@@ -24,6 +25,7 @@
 	});
 
 	function toggleDrawer() {
+		if (!drawerOpen) workspace.urlError = '';
 		if (!drawerOpen && addButton) {
 			// Leave a margin at the top of the screen; the drawer scrolls inside if it needs more.
 			drawerMaxHeight = Math.min(528, Math.max(160, addButton.getBoundingClientRect().top - 16));
@@ -103,6 +105,57 @@
 				: 'min-h-33'}"
 		></textarea>
 
+		{#if workspace.skills.length > 0 || workspace.draftAttachments.length > 0}
+			<ul class="flex flex-wrap gap-2" aria-label="Added to this message">
+				{#each workspace.skills as id}
+					{@const skill = SKILLS.find((entry) => entry.id === id)}
+					{#if skill}
+						<li
+							class="inline-flex items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
+						>
+							<Icon name={skill.icon} size={12} class="text-accent-text" />
+							{skill.label}
+							<button
+								type="button"
+								onclick={() => workspace.toggleSkill(id)}
+								aria-label="Turn off {skill.label}"
+								class="grid size-4 place-items-center rounded-pill text-text-tertiary hover:text-text-primary"
+							>
+								<Icon name="x" size={11} />
+							</button>
+						</li>
+					{/if}
+				{/each}
+				{#each workspace.draftAttachments as page}
+					<li
+						class="inline-flex max-w-72 items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
+					>
+						<Icon name="globe" size={12} class="shrink-0 text-accent-text" />
+						<a
+							href={page.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							title={page.title}
+							class="truncate hover:underline"
+						>
+							{page.title}
+						</a>
+						{#if page.truncated}
+							<span class="shrink-0 text-text-tertiary" title="Only the start of this page is used">· partial</span>
+						{/if}
+						<button
+							type="button"
+							onclick={() => workspace.removeAttachment(page.url)}
+							aria-label="Remove {page.title}"
+							class="grid size-4 shrink-0 place-items-center rounded-pill text-text-tertiary hover:text-text-primary"
+						>
+							<Icon name="x" size={11} />
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
 		<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 			<div class="flex items-center gap-2.5">
 				<div bind:this={wrapper} class="relative">
@@ -119,7 +172,7 @@
 						<Icon name="plus" size={18} />
 					</button>
 					{#if drawerOpen}
-						<AddContext id="add-context" maxHeight={drawerMaxHeight} />
+						<AddContext id="add-context" maxHeight={drawerMaxHeight} onClose={() => closeDrawer(true)} />
 					{/if}
 				</div>
 				<span

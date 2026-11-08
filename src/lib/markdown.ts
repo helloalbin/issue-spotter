@@ -12,6 +12,12 @@ export function toMarkdown(
 	const lines: string[] = ['# Issue analysis', '', '## Case facts', '', (turns[0] ?? '').trim(), ''];
 	turns.slice(1).forEach((turn) => lines.push('### Added to the case', '', turn.trim(), ''));
 
+	if (result.summary?.length) {
+		lines.push('## Case summary', '');
+		result.summary.forEach((point) => lines.push(`- ${point}`));
+		lines.push('');
+	}
+
 	lines.push('## Primary legal issues', '');
 	result.issues.forEach((item, index) => lines.push(`${index + 1}. ${item}`));
 
@@ -40,6 +46,11 @@ export function toMarkdown(
 			`- **[${entry.act}](${actHref})**${sections ? ` (${sections})` : ''}${entry.relevance ? `: ${entry.relevance}` : ''}`
 		);
 	});
+
+	if (result.counterArguments?.length) {
+		lines.push('', '## Counter-arguments', '');
+		result.counterArguments.forEach((entry) => lines.push(`- **${entry.issue}:** ${entry.argument}`));
+	}
 
 	lines.push(
 		'',

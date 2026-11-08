@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { auth } from '#lib/auth.svelte.js';
 	import AnalysisResult from '#lib/components/AnalysisResult.svelte';
+	import AttachedPages from '#lib/components/AttachedPages.svelte';
 	import Composer from '#lib/components/Composer.svelte';
 	import ErrorNotice from '#lib/components/ErrorNotice.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -98,6 +99,7 @@
 				<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
 					<span class="type-meta tracking-widest text-text-tertiary">ADDED TO CASE</span>
 					<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{workspace.pending}</p>
+					<AttachedPages pages={workspace.draftAttachments} />
 				</div>
 			</div>
 			<Progress
@@ -105,6 +107,7 @@
 				streamed={workspace.streamed}
 				closed={workspace.closed}
 				followUp
+				skills={workspace.runSkills}
 			/>
 		{/if}
 	{:else if workspace.isLoading}
@@ -112,6 +115,7 @@
 			stage={workspace.stage}
 			streamed={workspace.streamed}
 			closed={workspace.closed}
+			skills={workspace.runSkills}
 		/>
 	{:else}
 		<div class="mx-auto flex min-h-full w-full max-w-170 flex-col px-6">

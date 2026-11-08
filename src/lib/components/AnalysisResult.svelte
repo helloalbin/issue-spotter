@@ -3,6 +3,7 @@
 	import { caseLink, sectionLink } from '#lib/sources.js';
 	import { caseKey, lookupCount, sectionKey } from '#lib/spotter.js';
 	import type { Exchange } from '#lib/workspace.svelte.js';
+	import AttachedPages from './AttachedPages.svelte';
 	import Icon from './Icon.svelte';
 
 	type Props = {
@@ -83,6 +84,7 @@
 			</span>
 		</div>
 		<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{exchange.added}</p>
+		<AttachedPages pages={exchange.attachments} />
 	</div>
 
 	<header class="mt-8 flex items-center gap-3">
@@ -121,6 +123,20 @@
 	</div>
 
 	<div class="mt-6 divide-y divide-border-subtle border-t border-border-subtle">
+		{#if result.summary && result.summary.length > 0}
+			<section class="py-6">
+				{@render heading('Case summary', result.summary.length)}
+				<ul class="mt-4 space-y-2">
+					{#each result.summary as point}
+						<li class="flex gap-2 text-body text-text-secondary">
+							<span class="text-text-muted" aria-hidden="true">·</span>
+							{point}
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		<section class="py-6">
 			{@render heading('Primary legal issues', result.issues.length)}
 			{#if result.issues.length > 0}
@@ -253,6 +269,23 @@
 				</p>
 			{/if}
 		</section>
+
+		{#if result.counterArguments && result.counterArguments.length > 0}
+			<section class="py-6">
+				{@render heading('Counter-arguments', result.counterArguments.length)}
+				<p class="mt-1 text-caption text-text-tertiary">
+					The strongest points the other side could make. Test your own answer against them.
+				</p>
+				<ul class="mt-4 space-y-4">
+					{#each result.counterArguments as entry}
+						<li class="border-l-2 border-border-default pl-4">
+							<p class="type-label text-text-primary">{entry.issue}</p>
+							<p class="type-body mt-1 text-text-secondary">{entry.argument}</p>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 	</div>
 
 	<div class="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">

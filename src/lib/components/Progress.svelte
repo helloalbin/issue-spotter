@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ActiveSkill } from '#lib/skills.js';
 	import type { SpotSection, Streamed } from '#lib/spotter.js';
 	import Icon from './Icon.svelte';
 
@@ -8,15 +9,22 @@
 		closed: SpotSection[];
 		/** Whether the facts being read include ones added to an earlier case. */
 		followUp?: boolean;
+		/** The skills this analysis was started with; each adds a step. */
+		skills?: ActiveSkill[];
 	};
-	let { stage, streamed, closed, followUp = false }: Props = $props();
+	let { stage, streamed, closed, followUp = false, skills = [] }: Props = $props();
 
-	const sections = [
+	const everySection = [
+		{ key: 'summary', label: 'Summarizing the case', skill: 'summarize' },
 		{ key: 'issues', label: 'Identifying primary legal issues' },
 		{ key: 'doctrines', label: 'Matching governing doctrines' },
 		{ key: 'precedents', label: 'Finding landmark precedents' },
-		{ key: 'acts', label: 'Locating applicable acts & sections' }
+		{ key: 'acts', label: 'Locating applicable acts & sections' },
+		{ key: 'counterArguments', label: 'Preparing counter-arguments', skill: 'counter-arguments' }
 	] as const;
+
+	// A skill's step is shown only when that skill is on.
+	let sections = $derived(everySection.filter((section) => !('skill' in section) || skills.includes(section.skill)));
 
 	type State = 'done' | 'active' | 'pending';
 
@@ -38,7 +46,9 @@
 					? streamed.acts.map((entry) => entry.act)
 					: section.key === 'precedents'
 						? streamed.precedents.map((entry) => entry.name)
-						: streamed[section.key];
+						: section.key === 'counterArguments'
+							? streamed.counterArguments.map((entry) => entry.issue)
+							: streamed[section.key];
 			rows.push({
 				label: section.label,
 				state: closed.includes(section.key)

@@ -70,7 +70,10 @@ export function score(reference: Reference, title: string): number {
 
 export function hostOf(url: string): string | null {
 	try {
-		return new URL(url).hostname.replace(/^www\./, '');
+		const parsed = new URL(url);
+		// Only web addresses have a host that means anything: `javascript://indiankanoon.org/..` must not pass for one.
+		if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+		return parsed.hostname.replace(/^www\./, '');
 	} catch {
 		return null;
 	}

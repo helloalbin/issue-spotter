@@ -71,5 +71,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	return resolve(event);
+	const response = await resolve(event);
+	// Headers that cost nothing and close common findings: no content sniffing, no framing, a short
+	// referrer, no device permissions the app never uses, and HTTPS only once a site has been seen on it.
+	response.headers.set('x-content-type-options', 'nosniff');
+	response.headers.set('x-frame-options', 'DENY');
+	response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+	response.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+	if (event.url.protocol === 'https:') response.headers.set('strict-transport-security', 'max-age=31536000');
+	return response;
 };

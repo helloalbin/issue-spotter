@@ -8,6 +8,8 @@ import type { RequestHandler } from './$types';
 
 /** Messages one browser may send a day, and one network, so the inbox cannot be flooded. */
 const DAILY = { anon: 3, ip: 10 };
+/** Bytes: the longest message in four-byte characters is about 12 KB. */
+const MAX_BODY = 16_384;
 
 /**
  * Sends a Contact form message to the support inbox through Cloudflare's email binding. The message
@@ -17,6 +19,9 @@ const DAILY = { anon: 3, ip: 10 };
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (locals.authFailed) {
 		return Response.json({ error: 'Your sign-in has expired. Please sign in again.', code: 'auth_invalid' }, { status: 401 });
+	}
+	if (Number(request.headers.get('content-length')) > MAX_BODY) {
+		return Response.json({ error: 'That message is too large.' }, { status: 413 });
 	}
 	const parsed = parseContact(await request.json().catch(() => null));
 	if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });

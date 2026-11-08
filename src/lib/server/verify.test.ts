@@ -87,3 +87,12 @@ test('an act is not verified by a page for the same act in a different year', ()
 	const act: Reference = { key: 'act:1', kind: 'statute', name: 'The Transfer of Property Act, 1882' };
 	assert.deepEqual(matchSources([act], [{ url: `${IK}5/`, title: 'The Transfer of Property Act, 1892' }]), []);
 });
+
+import { hostOf as hostOfUrl } from './verify.ts';
+
+test('only web addresses have a host', () => {
+	assert.equal(hostOfUrl('https://www.indiankanoon.org/doc/1/'), 'indiankanoon.org');
+	assert.equal(hostOfUrl('javascript://indiankanoon.org/%0Aalert(1)'), null);
+	assert.equal(hostOfUrl('data://indiankanoon.org/x'), null);
+	assert.equal(hostOfUrl('not a url'), null);
+});

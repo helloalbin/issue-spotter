@@ -92,6 +92,30 @@ export const variables = defineEnvVars({
 		description: 'Pages one IP address may add per day, across visitors.',
 		schema: (value) => positiveInt(value, 100)
 	},
+	COMPARE_MONTHLY_LIMIT: {
+		description: 'Case comparisons per month for a visitor who is not signed in. Each costs about as much as a deep research run.',
+		schema: (value) => positiveInt(value, 1)
+	},
+	COMPARE_IP_MONTHLY_LIMIT: {
+		description: 'Case comparisons per month for one IP address, across visitors who are not signed in.',
+		schema: (value) => positiveInt(value, 5)
+	},
+	COMPARE_SIGNED_IN_MONTHLY_LIMIT: {
+		description: 'Case comparisons per month for a signed-in account. Tiers will set their own.',
+		schema: (value) => positiveInt(value, 3)
+	},
+	COMPARE_SIGNED_IN_IP_MONTHLY_LIMIT: {
+		description: 'Case comparisons per month for one IP address, across signed-in accounts.',
+		schema: (value) => positiveInt(value, 15)
+	},
+	COMPARE_IDENTIFY_DAILY_LIMIT: {
+		description: 'Times per day one visitor or account may ask the app to find the two cases to compare. Finding is a search and costs a little, so it is limited apart from the comparison.',
+		schema: (value) => positiveInt(value, 10)
+	},
+	COMPARE_IDENTIFY_IP_DAILY_LIMIT: {
+		description: 'Times per day one IP address may ask the app to find cases to compare, across visitors.',
+		schema: (value) => positiveInt(value, 50)
+	},
 	DEEP_RESEARCH_MONTHLY_LIMIT: {
 		description: 'Deep research runs per month for a visitor who is not signed in. Each run costs several cents.',
 		schema: (value) => positiveInt(value, 1)

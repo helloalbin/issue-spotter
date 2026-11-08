@@ -1,5 +1,11 @@
 import {
 	ANON_DAILY_LIMIT,
+	COMPARE_IDENTIFY_DAILY_LIMIT,
+	COMPARE_IDENTIFY_IP_DAILY_LIMIT,
+	COMPARE_IP_MONTHLY_LIMIT,
+	COMPARE_MONTHLY_LIMIT,
+	COMPARE_SIGNED_IN_IP_MONTHLY_LIMIT,
+	COMPARE_SIGNED_IN_MONTHLY_LIMIT,
 	DEEP_RESEARCH_WRITE_MODEL,
 	DEEP_RESEARCH_WRITE_MODEL_INVESTIGATIVE,
 	DEEP_RESEARCH_WRITE_MODEL_RESEARCHER,
@@ -60,4 +66,23 @@ export function writeModelFor(tier: Tier): string | undefined {
 	if (tier === 'researcher') return DEEP_RESEARCH_WRITE_MODEL_RESEARCHER ?? DEEP_RESEARCH_WRITE_MODEL_INVESTIGATIVE ?? DEEP_RESEARCH_WRITE_MODEL;
 	if (tier === 'investigative') return DEEP_RESEARCH_WRITE_MODEL_INVESTIGATIVE ?? DEEP_RESEARCH_WRITE_MODEL;
 	return DEEP_RESEARCH_WRITE_MODEL;
+}
+
+/** The monthly counter for comparing two cases, which costs about what deep research does. */
+export function compareSubjectFor(locals: App.Locals): Subject {
+	const base = subjectFor(locals);
+	return {
+		...base,
+		ns: `compare:${base.ns}`,
+		period: 'month',
+		limits: locals.user
+			? { anon: COMPARE_SIGNED_IN_MONTHLY_LIMIT, ip: COMPARE_SIGNED_IN_IP_MONTHLY_LIMIT }
+			: { anon: COMPARE_MONTHLY_LIMIT, ip: COMPARE_IP_MONTHLY_LIMIT }
+	};
+}
+
+/** Finding the two cases is a search of its own, counted by the day apart from the comparison. */
+export function identifySubjectFor(locals: App.Locals): Subject {
+	const base = subjectFor(locals);
+	return { ...base, ns: `cmpid:${base.ns}`, limits: { anon: COMPARE_IDENTIFY_DAILY_LIMIT, ip: COMPARE_IDENTIFY_IP_DAILY_LIMIT } };
 }

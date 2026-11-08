@@ -46,7 +46,7 @@ test('only the application section may reason beyond a source, and says so', () 
 });
 
 test('sizes and lengths are clamped to the template; markup is removed', () => {
-	const many = Array.from({ length: 12 }, () => ({ ...good, text: '**Bold** ' + 'word '.repeat(80) }));
+	const many = Array.from({ length: 12 }, (_, i) => ({ ...good, text: `**Bold** point${i} ` + 'word '.repeat(80) }));
 	const draft = parseDraft(JSON.stringify({ title: '*T*', synopsis: many, law: [], authorities: [{ name: 'A v. B (SC, 2023)', claims: many }, { name: 'Empty v. Case', claims: [{ text: 'x', source: 1, quote: 'not on the page at all anywhere' }] }], application: [], against: [], notConfirmed: [] }))!;
 	const report = buildReport(draft, 't', readable);
 	const synopsis = report.sections[0].lines;
@@ -78,4 +78,13 @@ test('a near-miss quote is kept with the page\'s own wording and marked approxim
 	assert.equal(check.approx, true);
 	assert.ok(page.includes(check.quote!));
 	assert.equal(report.dropped, 0);
+});
+
+test('the same sentence cited to two sources becomes one line with both numbers', () => {
+	const page2 = PAGE;
+	const draft = parseDraft(JSON.stringify({ title: 't', synopsis: [good, { ...good, source: 2 }], law: [], authorities: [], application: [], against: [], notConfirmed: [] }))!;
+	const report = buildReport(draft, 't', { pages: new Map([[1, PAGE], [2, page2]]), pdfs: new Set() });
+	const lines = report.sections[0].lines;
+	assert.equal(lines.length, 1);
+	assert.deepEqual(lines[0].cites, [1, 2]);
 });

@@ -1,4 +1,5 @@
-import { MAX_GROUP_LINES, MAX_LINE_WORDS, RESEARCH_TEMPLATE, clampWords } from '../report.ts';
+import { COMPARE_TEMPLATE, MAX_GROUP_LINES, MAX_LINE_WORDS, RESEARCH_TEMPLATE, clampWords, templateFor } from '../report.ts';
+import type { Slot } from '../report.ts';
 import type { Report, ReportLine, ReportSection } from '../spotter.ts';
 import { closestPassage, quoteSupported } from './ground.ts';
 
@@ -14,29 +15,24 @@ const claim = {
 };
 const claims = { type: 'array', items: claim };
 
-/** What the writer must return. Every slot of the template is present, so none can be added or left out. */
-export const REPORT_SCHEMA = {
-	type: 'object',
-	additionalProperties: false,
-	required: ['title', 'synopsis', 'law', 'authorities', 'application', 'against', 'notConfirmed'],
-	properties: {
-		title: { type: 'string' },
-		synopsis: claims,
-		law: claims,
-		authorities: {
-			type: 'array',
-			items: {
-				type: 'object',
-				additionalProperties: false,
-				required: ['name', 'claims'],
-				properties: { name: { type: 'string' }, claims }
-			}
-		},
-		application: claims,
-		against: claims,
-		notConfirmed: { type: 'array', items: { type: 'string' } }
+/** What the writer must return for a template: every slot is present, so none can be added or left out. */
+export function schemaFor(template: Slot[]) {
+	const properties: Record<string, unknown> = { title: { type: 'string' } };
+	for (const slot of template) {
+		properties[slot.id] = slot.plain
+			? { type: 'array', items: { type: 'string' } }
+			: slot.grouped
+				? {
+						type: 'array',
+						items: { type: 'object', additionalProperties: false, required: ['name', 'claims'], properties: { name: { type: 'string' }, claims } }
+					}
+				: claims;
 	}
-};
+	return { type: 'object', additionalProperties: false, required: ['title', ...template.map((slot) => slot.id)], properties };
+}
+
+export const REPORT_SCHEMA = schemaFor(RESEARCH_TEMPLATE);
+export const COMPARE_SCHEMA = schemaFor(COMPARE_TEMPLATE);
 
 export const WRITER_INSTRUCTIONS =
 	'You write a legal research report for a law student, in a fixed format, from source texts you are given. ' +
@@ -66,16 +62,9 @@ export function writerInput(facts: string, topic: string, leads: string, sources
 	);
 }
 
-export type Draft = {
-	title: string;
-	synopsis: Item[];
-	law: Item[];
-	authorities: { name: string; claims: Item[] }[];
-	application: Item[];
-	against: Item[];
-	notConfirmed: string[];
-};
 type Item = { text: string; source: number; quote: string };
+/** What the writer returned, by slot id: statements, groups of statements, or plain notes. */
+export type Draft = { title: string; slots: Record<string, Item[] | { name: string; claims: Item[] }[] | string[]> };
 
 const str = (value: unknown, max = 600) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const items = (value: unknown): Item[] =>
@@ -87,8 +76,8 @@ const items = (value: unknown): Item[] =>
 		}))
 		.filter((entry) => entry.text !== '');
 
-/** Reads the writer's reply, ignoring anything that does not fit the format. */
-export function parseDraft(reply: string): Draft | null {
+/** Reads the writer's reply for a template, ignoring anything that does not fit the format. */
+export function parseDraft(reply: string, template: Slot[] = RESEARCH_TEMPLATE): Draft | null {
 	const start = reply.indexOf('{');
 	const end = reply.lastIndexOf('}');
 	if (start < 0 || end <= start) return null;
@@ -99,17 +88,19 @@ export function parseDraft(reply: string): Draft | null {
 		return null;
 	}
 	if (!parsed || typeof parsed !== 'object') return null;
-	return {
-		title: str(parsed.title, 200),
-		synopsis: items(parsed.synopsis),
-		law: items(parsed.law),
-		authorities: (Array.isArray(parsed.authorities) ? parsed.authorities : [])
-			.map((entry: any) => ({ name: str(entry?.name, 160), claims: items(entry?.claims) }))
-			.filter((entry: { name: string }) => entry.name !== ''),
-		application: items(parsed.application),
-		against: items(parsed.against),
-		notConfirmed: (Array.isArray(parsed.notConfirmed) ? parsed.notConfirmed : []).map((note: unknown) => str(note, 300)).filter(Boolean)
-	};
+
+	const slots: Draft['slots'] = {};
+	for (const slot of template) {
+		const raw = parsed[slot.id];
+		slots[slot.id] = slot.plain
+			? (Array.isArray(raw) ? raw : []).map((note: unknown) => str(note, 300)).filter(Boolean)
+			: slot.grouped
+				? (Array.isArray(raw) ? raw : [])
+						.map((entry: any) => ({ name: str(entry?.name, 160), claims: items(entry?.claims) }))
+						.filter((entry: { name: string }) => entry.name !== '')
+				: items(raw);
+	}
+	return { title: str(parsed.title, 200), slots };
 }
 
 /** Plain text: the few bits of markup a model adds anyway are removed. */
@@ -134,8 +125,10 @@ export function buildReport(
 	draft: Draft,
 	topic: string,
 	readable: Readable,
-	onDrop?: (info: { text: string; source: number; quote?: string; why: 'no-such-source' | 'no-quote' | 'quote-not-on-page' }) => void
+	onDrop?: (info: { text: string; source: number; quote?: string; why: 'no-such-source' | 'no-quote' | 'quote-not-on-page' }) => void,
+	kind: Report['kind'] = 'research'
 ): Report {
+	const template = templateFor(kind);
 	let dropped = 0;
 	const droppedTexts: string[] = [];
 
@@ -161,30 +154,48 @@ export function buildReport(
 		if (droppedTexts.length < 3) droppedTexts.push(text);
 		return null;
 	};
-	const lines = (list: Item[], allowInference: boolean, max: number) =>
-		list.map((item) => verify(item, allowInference)).filter((line): line is ReportLine => line !== null).slice(0, max);
-
-	const sections: ReportSection[] = RESEARCH_TEMPLATE.map((slot) => {
-		const base = { id: slot.id, heading: slot.heading, numbered: slot.numbered, lines: [] as ReportLine[] };
-		switch (slot.id) {
-			case 'authorities': {
-				const children = draft.authorities
-					.map((entry) => ({ heading: plain(entry.name), lines: lines(entry.claims, false, MAX_GROUP_LINES) }))
-					.filter((child) => child.lines.length > 0)
-					.slice(0, slot.max);
-				return { ...base, children };
-			}
-			case 'notConfirmed': {
-				const notes = draft.notConfirmed.map((note) => clampWords(plain(note), 40)).filter(Boolean);
-				const unverified = droppedTexts.map((text) => `Could not verify against the page: ${text}`);
-				return { ...base, notes: [...notes, ...unverified].slice(0, slot.max) };
-			}
-			default:
-				return { ...base, lines: lines((draft as any)[slot.id] as Item[], !!slot.inference, slot.max) };
+	/** The same sentence cited to two sources is one line with both numbers. */
+	const merge = (list: ReportLine[]): ReportLine[] => {
+		const seen = new Map<string, ReportLine>();
+		for (const line of list) {
+			const key = line.text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+			const earlier = seen.get(key);
+			if (earlier) earlier.cites = [...new Set([...earlier.cites, ...line.cites])].sort((a, b) => a - b);
+			else seen.set(key, { ...line, cites: [...line.cites] });
 		}
+		return [...seen.values()];
+	};
+	const lines = (list: Item[], allowInference: boolean, max: number) =>
+		merge(list.map((item) => verify(item, allowInference)).filter((line): line is ReportLine => line !== null)).slice(0, max);
+
+	// Everything but the notes first, so the notes can say what could not be verified.
+	const sections: ReportSection[] = template.map((slot) => {
+		const base = { id: slot.id, heading: slot.heading, numbered: slot.numbered, lines: [] as ReportLine[] };
+		const given = draft.slots[slot.id];
+		if (slot.plain) return base;
+		if (slot.grouped) {
+			const groups = (Array.isArray(given) ? (given as { name: string; claims: Item[] }[]) : [])
+				.map((entry) => ({ heading: plain(entry.name), lines: lines(entry.claims, false, slot.groupMax ?? MAX_GROUP_LINES) }))
+				.filter((child) => child.lines.length > 0)
+				.slice(0, slot.max);
+			return { ...base, children: groups };
+		}
+		return { ...base, lines: lines(Array.isArray(given) ? (given as Item[]) : [], !!slot.inference, slot.max) };
 	});
 
-	return { kind: 'research', title: clampWords(plain(draft.title) || topic, 24), sections, dropped };
+	return {
+		kind,
+		title: clampWords(plain(draft.title) || topic, 24),
+		sections: sections.map((section) => {
+			const slot = template.find((entry) => entry.id === section.id)!;
+			if (!slot.plain) return section;
+			const given = (draft.slots[slot.id] as string[]) ?? [];
+			const notes = given.map((note) => clampWords(plain(note), 40)).filter(Boolean);
+			const unverified = droppedTexts.map((text) => `Could not verify against the page: ${text}`);
+			return { ...section, notes: [...notes, ...unverified].slice(0, slot.max) };
+		}),
+		dropped
+	};
 }
 
 /** How many lines of the report rest on a page, for the tally. */

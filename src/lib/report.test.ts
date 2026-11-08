@@ -55,3 +55,11 @@ test('the template is a fixed list: synopsis first, then numbered sections', () 
 	assert.equal(headingOf(RESEARCH_TEMPLATE[0], 0), 'Synopsis');
 	assert.equal(headingOf(RESEARCH_TEMPLATE[1], 1), '1. Governing law');
 });
+
+test('a comparison labels its own reasoning without mentioning your facts', () => {
+	const compare: Report = { kind: 'compare', title: 'A v. B', dropped: 0, sections: [{ id: 'together', heading: 'How they fit together', numbered: false, lines: [{ text: 'Rely on A first.', cites: [], basis: 'inference' }] }] };
+	const md = renderMarkdown(compare, []);
+	assert.match(md, /Rely on A first\. \*\(reasoning, not from a page\)\*/);
+	assert.doesNotMatch(md, /your facts/);
+	assert.match(md, /## 5\. How they fit together/);
+});

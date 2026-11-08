@@ -19,6 +19,8 @@ export type Slot = {
 	empty: string;
 	/** The section holds sub-headed groups, such as one per case. */
 	grouped?: boolean;
+	/** Most lines in one group; defaults to MAX_GROUP_LINES. */
+	groupMax?: number;
 	/** Lines may be the writer's own reasoning about the user's facts. */
 	inference?: boolean;
 	/** The section is a list of plain notes with no source. */
@@ -37,6 +39,18 @@ export const RESEARCH_TEMPLATE: Slot[] = [
 	{ id: 'notConfirmed', heading: 'Not confirmed', numbered: false, number: true, min: 0, max: 8, plain: true, empty: 'Nothing further to flag.' }
 ];
 
+export const COMPARE_TEMPLATE: Slot[] = [
+	{ id: 'synopsis', heading: 'Synopsis', numbered: true, number: false, min: 3, max: 5, empty: 'No point could be confirmed from the pages read.' },
+	{ id: 'cases', heading: 'The cases', numbered: false, number: true, min: 0, max: 2, grouped: true, groupMax: 3, empty: 'The cases could not be described from the pages read.' },
+	{ id: 'facts', heading: 'Facts compared', numbered: false, number: true, min: 0, max: 4, grouped: true, groupMax: 4, empty: 'The facts could not be compared from the pages read.' },
+	{ id: 'holdings', heading: 'Judgments compared', numbered: false, number: true, min: 0, max: 4, grouped: true, groupMax: 4, empty: 'The judgments could not be compared from the pages read.' },
+	{ id: 'treatment', heading: 'How other decisions treated them', numbered: false, number: true, min: 0, max: 5, empty: 'No decision overturning, reversing, doubting or following either case was found in the pages read. That does not mean none exists.' },
+	{ id: 'together', heading: 'How they fit together', numbered: false, number: true, min: 0, max: 4, inference: true, empty: 'Nothing could be drawn together from the pages read.' },
+	{ id: 'notConfirmed', heading: 'Not confirmed', numbered: false, number: true, min: 0, max: 8, plain: true, empty: 'Nothing further to flag.' }
+];
+
+export const templateFor = (kind: Report['kind']): Slot[] => (kind === 'compare' ? COMPARE_TEMPLATE : RESEARCH_TEMPLATE);
+
 /** Cuts a statement to a word limit at a word boundary. */
 export function clampWords(text: string, max = MAX_LINE_WORDS): string {
 	const words = text.trim().split(/\s+/);
@@ -51,7 +65,8 @@ export function clampWords(text: string, max = MAX_LINE_WORDS): string {
 /** `[1][3]` for a line's sources. */
 const marks = (line: ReportLine) => line.cites.map((n) => `[${n}]`).join('');
 
-const lineMarkdown = (line: ReportLine) => `${line.text}${marks(line) ? ' ' + marks(line) : ''}${line.basis === 'inference' ? ' *(inference from your facts)*' : ''}`;
+const inferenceLabel = (kind: Report['kind']) => (kind === 'compare' ? '*(reasoning, not from a page)*' : '*(inference from your facts)*');
+const lineMarkdown = (line: ReportLine, kind: Report['kind']) => `${line.text}${marks(line) ? ' ' + marks(line) : ''}${line.basis === 'inference' ? ' ' + inferenceLabel(kind) : ''}`;
 
 /** The numbered title of a section as it is shown: "1. Governing law", "Synopsis". */
 export function headingOf(slot: Slot, position: number): string {
@@ -62,7 +77,7 @@ export function headingOf(slot: Slot, position: number): string {
  * The report as Markdown: H1 title, H2 sections, H3 per case. The numbering of sections counts only
  * the ones that carry a number.
  */
-export function renderMarkdown(report: Report, sources: ResearchSource[], template: Slot[] = RESEARCH_TEMPLATE): string {
+export function renderMarkdown(report: Report, sources: ResearchSource[], template: Slot[] = templateFor(report.kind)): string {
 	const out: string[] = [`# ${report.title}`, ''];
 	let position = 0;
 
@@ -80,11 +95,11 @@ export function renderMarkdown(report: Report, sources: ResearchSource[], templa
 		} else if (slot.grouped) {
 			children.forEach((child, at) => {
 				out.push(`### ${position}.${at + 1} ${child.heading}`, '');
-				for (const line of child.lines) out.push(`- ${lineMarkdown(line)}`);
+				for (const line of child.lines) out.push(`- ${lineMarkdown(line, report.kind)}`);
 				out.push('');
 			});
 		} else {
-			lines.forEach((line, at) => out.push(slot.numbered ? `${at + 1}. ${lineMarkdown(line)}` : `- ${lineMarkdown(line)}`));
+			lines.forEach((line, at) => out.push(slot.numbered ? `${at + 1}. ${lineMarkdown(line, report.kind)}` : `- ${lineMarkdown(line, report.kind)}`));
 		}
 
 		const empty = slot.plain ? notes.length === 0 : slot.grouped ? children.length === 0 : lines.length === 0;

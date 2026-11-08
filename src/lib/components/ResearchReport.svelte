@@ -80,7 +80,7 @@
 		{:else if item.basis === 'inference'}
 			<span
 				class="ml-1 rounded-sm border border-border-subtle px-1.5 py-px font-mono text-[10px] text-text-tertiary"
-				title="Reasoning about your facts. No page can confirm it.">INFERENCE</span
+				title={report.kind === 'compare' ? 'Reasoning, not taken from a page. No page can confirm it.' : 'Reasoning about your facts. No page can confirm it.'}>INFERENCE</span
 			>
 		{/if}
 	</span>
@@ -88,7 +88,7 @@
 
 <header class="mt-8">
 	<p class="type-meta tracking-widest text-accent-text">
-		RESEARCH REPORT · {brief.sources.length}
+		{report.kind === 'compare' ? 'CASE COMPARISON' : 'RESEARCH REPORT'} · {brief.sources.length}
 		{brief.sources.length === 1 ? 'SOURCE' : 'SOURCES'}
 	</p>
 	<h2 class="type-h3 mt-1">{report.title}</h2>

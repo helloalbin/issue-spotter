@@ -167,7 +167,7 @@ export type ReportSection = {
  * cannot add or reorder them.
  */
 export type Report = {
-	kind: 'research';
+	kind: 'research' | 'compare';
 	title: string;
 	sections: ReportSection[];
 	/** Statements dropped because the page did not contain the quote that was given for them. */
@@ -251,6 +251,32 @@ export type SpotItem =
 	| { section: 'precedents'; value: Precedent }
 	| { section: 'acts'; value: ActReference }
 	| { section: 'counterArguments'; value: CounterArgument };
+
+/** One of the two cases to compare, as found and checked before the user confirms it. */
+export type CaseCandidate = {
+	/** The part of what the user typed that this case answers. */
+	query: string;
+	name: string;
+	court: string;
+	year: string;
+	url: string;
+	/** The title the page itself gives. */
+	title: string;
+	host: string;
+	official: boolean;
+	/** The page was opened and is about the case named. */
+	verified: boolean;
+	/** The app can read the page (an Indian Kanoon page or a statute site, not a PDF). */
+	readable: boolean;
+	/** Why it was not verified or readable, in words for the user. */
+	problem?: string;
+};
+
+export type CompareEvent =
+	| { compare: QuotaInfo }
+	| { stage: 'opening' | 'treatment' | 'reading' | 'writing' }
+	| { brief: ResearchBrief }
+	| { error: string };
 
 /** Newline-delimited JSON events streamed by POST /api/research. */
 export type ResearchEvent =

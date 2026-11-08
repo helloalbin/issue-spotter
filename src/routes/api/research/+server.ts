@@ -18,6 +18,7 @@ import { Deadline } from '#lib/server/deadline.js';
 import { selectExcerpts } from '#lib/server/excerpt.js';
 import { isPdfUrl, pickSources } from '#lib/server/ground.js';
 import { researchSubjectFor, tierOf, writeModelFor } from '#lib/server/identity.js';
+import { isReasoningModel, post } from '#lib/server/openai.js';
 import { checkUrl, fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import {
@@ -41,23 +42,8 @@ const OFF_TOPIC =
 	"Deep research digs deeper into the case you're working on, and this topic looks like a different matter. " +
 	'Start a new analysis for it, or ask about something that arises from your case.';
 
-async function post(fetchFn: typeof fetch, path: string, body: unknown, signal: AbortSignal) {
-	return fetchFn(`${OPENAI_BASE_URL}${path}`, {
-		method: 'POST',
-		signal,
-		headers: {
-			Authorization: ['Bearer', OPENAI_API_KEY].join(' '),
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify(body)
-	});
-}
-
 /** At most this many PDFs go to the model by address; each is large. */
 const MAX_PDFS = 2;
-
-/** Reasoning models take a reasoning effort; the others reject the field. */
-const isReasoningModel = (model: string) => /^(gpt-5|o\d)/.test(model);
 
 /**
  * The size of a PDF in bytes, or null when the site does not say. Some sites answer a HEAD request

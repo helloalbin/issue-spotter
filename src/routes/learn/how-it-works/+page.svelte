@@ -38,10 +38,10 @@
 
 	<h2>4. Adding more facts</h2>
 	<p>
-		The box under the analysis is for more facts about the same case: what you remembered, or what
-		happened next. {SITE_NAME} puts them together with everything you have already given and reads
-		the whole case again, so the new analysis replaces the old one and covers all of it. Each added
-		message counts as one search. To start a different case, use New analysis.
+		The box under the analysis is for more facts about the same case: something you remembered, or
+		what happened next. {SITE_NAME} reads the whole case again with your new facts included and adds
+		an updated analysis below. Your earlier analysis stays where it is, so you can compare them.
+		Each added message counts as one search. To start a different case, use New analysis.
 	</p>
 
 	<h2>5. What to keep in mind</h2>

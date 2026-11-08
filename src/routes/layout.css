@@ -5,9 +5,11 @@
 /*
  * Design system, from design/spotter.pen (frame "design-system").
  * Semantic tokens only: components use these names, never raw hex values.
- * Dark is the default theme; light is selected by data-theme on <html>.
+ * Dark is the default theme; light is selected by data-theme on <html>. An element with
+ * data-scope="light" or "dark" shows that theme inside whichever one is active (the Appearance previews).
  */
-:root {
+:root,
+[data-scope='dark'] {
 	color-scheme: dark;
 
 	/* Surfaces */
@@ -73,7 +75,8 @@
 	--elevation-overlay: 0 10px 28px #00000070;
 }
 
-:root[data-theme='light'] {
+:root[data-theme='light'],
+[data-scope='light'] {
 	color-scheme: light;
 
 	--bg: #fbfbfc;

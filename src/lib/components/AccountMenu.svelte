@@ -28,7 +28,7 @@
 	const account: { label: string; icon: IconName; href?: string }[] = [
 		{ label: 'Upgrade plan', icon: 'sparkles' },
 		{ label: 'Profile', icon: 'circleUser', href: '/profile' },
-		{ label: 'Settings', icon: 'settings' }
+		{ label: 'Settings', icon: 'settings', href: '/settings' }
 	];
 
 	const help: { label: string; icon: IconName; href: string }[] = [

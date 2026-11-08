@@ -63,6 +63,12 @@
 		not stored by us. Copying or downloading it happens in your browser.
 	</p>
 
+	<h2>Appearance</h2>
+	<p>
+		Your choice of light, dark or system appearance is saved in this browser only. We do not receive
+		it.
+	</p>
+
 	<h2>Reading results aloud</h2>
 	<p>
 		"Read aloud" uses the speech engine built into your browser, so the text is spoken on your

@@ -16,7 +16,8 @@
 			// Applies the saved theme before first paint so the page never flashes the wrong one.
 			try {
 				var saved = localStorage.getItem('theme');
-				var light = saved ? saved === 'light' : matchMedia('(prefers-color-scheme: light)').matches;
+				// Light or dark if chosen; anything else (nothing saved, or "system") follows the device.
+				var light = saved === 'light' || (saved !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches);
 				document.documentElement.dataset.theme = light ? 'light' : 'dark';
 			} catch (e) {}
 		</script>

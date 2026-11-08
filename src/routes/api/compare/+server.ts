@@ -5,7 +5,8 @@ import {
 	DEEP_RESEARCH_READ_CHARS,
 	DEEP_RESEARCH_TIMEOUT_MS,
 	OPENAI_API_KEY,
-	OPENAI_MODEL
+	OPENAI_MODEL,
+	SOURCE_READING
 } from '$app/env/private';
 import {
 	COMPARE_INSTRUCTIONS,
@@ -17,7 +18,8 @@ import {
 import { Deadline } from '#lib/server/deadline.js';
 import { selectExcerpts } from '#lib/server/excerpt.js';
 import { isPdfUrl } from '#lib/server/ground.js';
-import { compareSubjectFor, tierOf, writeModelFor } from '#lib/server/identity.js';
+import { issueGrant } from '#lib/server/grants.js';
+import { compareSubjectFor, grantSubject, tierOf, writeModelFor } from '#lib/server/identity.js';
 import { post, readAnswer, writerBody } from '#lib/server/openai.js';
 import { fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
@@ -107,18 +109,22 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 			const deadline = new Deadline(DEEP_RESEARCH_TIMEOUT_MS, DEEP_RESEARCH_TIMEOUT_MS, upstream.signal);
 			try {
 				send({ compare: quotaInfo(subject, remaining) });
-				send({ stage: 'opening' });
+				const inBrowser = SOURCE_READING === 'browser';
 
-				// 1. Open both judgments.
-				const opened = await Promise.all(
-					chosen!.map((entry) =>
-						fetchPage(fetch, entry.url, { domains: RESEARCH_DOMAINS, maxChars: 5_000_000, signal: deadline.signal, allowLocal: import.meta.env.DEV }).catch(() => null)
-					)
-				);
-				if (opened.some((page) => page === null)) {
-					return await fail('One of the judgments could not be opened right now. It has not used any of your comparisons.');
+				// 1. Open both judgments. With browser reading, the user's browser does this later.
+				let pages: NonNullable<Awaited<ReturnType<typeof fetchPage>>>[] = [];
+				if (!inBrowser) {
+					send({ stage: 'opening' });
+					const opened = await Promise.all(
+						chosen!.map((entry) =>
+							fetchPage(fetch, entry.url, { domains: RESEARCH_DOMAINS, maxChars: 5_000_000, signal: deadline.signal, allowLocal: import.meta.env.DEV }).catch(() => null)
+						)
+					);
+					if (opened.some((page) => page === null)) {
+						return await fail('One of the judgments could not be opened right now. It has not used any of your comparisons.');
+					}
+					pages = opened as typeof pages;
 				}
-				const pages = opened as NonNullable<(typeof opened)[number]>[];
 
 				// 2. Look for decisions that overturned either; the comparison goes on without them if the search fails.
 				send({ stage: 'treatment' });
@@ -156,7 +162,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 						for (const { url } of answer.urls) {
 							const clean = cleanUrl(url);
 							const host = hostOf(clean);
-							if (host && isAllowedHost(host, RESEARCH_DOMAINS) && !isPdfUrl(clean) && !pages.some((page) => page.url === clean) && !treatmentUrls.includes(clean)) {
+							if (host && isAllowedHost(host, RESEARCH_DOMAINS) && !isPdfUrl(clean) && !(inBrowser ? chosen!.some((entry) => entry.url === clean) : pages.some((page) => page.url === clean)) && !treatmentUrls.includes(clean)) {
 								treatmentUrls.push(clean);
 							}
 						}
@@ -166,6 +172,24 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				} catch (error) {
 					if (cancelled) return;
 					console.error('Looking for overturning decisions failed:', error);
+				}
+
+				if (inBrowser) {
+					// The pages are read in the user's browser: hand it a signed list and wait for it to come back.
+					const urls = [chosen![0].url, chosen![1].url, ...treatmentUrls.slice(0, MAX_TREATMENT_PAGES)];
+					const names = `${chosen![0].name} ${chosen![1].name}`;
+					const sources = urls.map((url, at) => ({ n: at + 1, url, title: at < 2 ? chosen![at].name : '', host: hostOf(url) ?? '', official: isOfficialHost(hostOf(url) ?? '') }));
+					send({
+						gather: {
+							token: await issueGrant('compare', grantSubject(locals), reservation.day, urls),
+							sources,
+							queries: Object.fromEntries(sources.map((source) => [source.n, source.n <= 2 ? `${chosen![source.n - 1].name} ${COMPARE_QUERY}` : `${names} overruled reversed set aside doubted distinguished ${leads}`])),
+							chars: DEEP_RESEARCH_READ_CHARS,
+							context: { leads, searches }
+						}
+					});
+					send({ compare: quotaInfo(subject, remaining) });
+					return;
 				}
 
 				// 3. Open those, and choose the passages of everything.

@@ -160,6 +160,18 @@ export const variables = defineEnvVars({
 		description: 'Longest a deep research run may take, searching and then reading the cited pages.',
 		schema: (value) => positiveInt(value, 180000)
 	},
+	SOURCE_READING: {
+		description: 'Where fetched pages are turned into text: "browser" (the default: the server only relays the bytes and the user\'s browser reads them, which keeps the Worker within the free plan\'s CPU limit and makes official PDFs readable) or "server" (the Worker parses pages itself, which needs the Workers Paid plan for long judgments and cannot read PDFs).',
+		schema: (value) => (value === 'server' ? 'server' : 'browser')
+	},
+	SOURCE_MAX_BYTES: {
+		description: 'Largest file the server will relay to the browser to read.',
+		schema: (value) => positiveInt(value, 8000000)
+	},
+	PDF_ATTEST: {
+		description: 'Whether quotes taken from a PDF read in the browser are checked again by a model reading the official PDF itself. "false" turns it off.',
+		schema: (value) => value !== 'false'
+	},
 	DEEP_RESEARCH_WRITE_MODEL: {
 		description: 'Model that writes the research report from the pages. Defaults to DEEP_RESEARCH_MODEL. Any model works here: it does not search.',
 		schema: (value) => value || undefined

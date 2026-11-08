@@ -53,14 +53,17 @@ export function parseItems(reply: string): Item[] {
 	const start = reply.indexOf('{');
 	const end = reply.lastIndexOf('}');
 	if (start < 0 || end <= start) return [];
-	let parsed: any;
 	try {
-		parsed = JSON.parse(reply.slice(start, end + 1));
+		return normalizeItems(JSON.parse(reply.slice(start, end + 1))?.items);
 	} catch {
 		return [];
 	}
-	if (!Array.isArray(parsed?.items)) return [];
-	return parsed.items
+}
+
+/** Citations from anywhere, made safe: trimmed, capped, at most five, numbered from 1. */
+export function normalizeItems(raw: unknown): Item[] {
+	if (!Array.isArray(raw)) return [];
+	return raw
 		.map((entry: any) => ({
 			cite: text(entry?.cite, 300),
 			name: text(entry?.name, 200),
@@ -128,7 +131,7 @@ const COURT_STOP = new Set(['court', 'india', 'high', 'of', 'the', 'and', 'bench
  * differs may be the year of the report rather than of the decision, and a judgment page often does
  * not print its own report reference, so those are shown as facts, not accusations.
  */
-export function checkDetails(item: Item, title: string, pageText: string): Details {
+export function checkDetails(item: Item, title: string, pageText: string, reporterFound?: boolean): Details {
 	const head = `${title} ${pageText.slice(0, 4000)}`;
 	const headKey = ` ${matchKey(head)} `;
 
@@ -153,7 +156,12 @@ export function checkDetails(item: Item, title: string, pageText: string): Detai
 	const court: Match = courtWords.length === 0 ? 'not-given' : courtWords.every((word) => headKey.includes(` ${word} `)) ? 'match' : 'mismatch';
 
 	const reporterKey = matchKey(item.reporter);
-	const reporter = !reporterKey ? 'not-given' : ` ${matchKey(pageText)} `.includes(` ${reporterKey} `) || headKey.includes(` ${reporterKey} `) ? 'found' : 'not-found';
+	// With the page read in the browser, the browser says whether the reference is anywhere in it.
+	const reporter = !reporterKey
+		? 'not-given'
+		: reporterFound !== undefined
+			? reporterFound || headKey.includes(` ${reporterKey} `) ? 'found' : 'not-found'
+			: ` ${matchKey(pageText)} `.includes(` ${reporterKey} `) || headKey.includes(` ${reporterKey} `) ? 'found' : 'not-found';
 
 	return { name, year, pageYear, court, reporter };
 }
@@ -235,7 +243,18 @@ export function supportInput(rows: { item: Item; n: number }[], sources: { n: nu
 }
 
 /** A page found for a citation, and what the app read of it. */
-export type Located = { n: number; title: string; page: string; excerpt: string; cut: boolean; verified: boolean };
+export type Located = {
+	n: number;
+	title: string;
+	/** The text quotes are checked against: the whole page, or with the browser route the chosen paragraphs. */
+	page: string;
+	excerpt: string;
+	cut: boolean;
+	verified: boolean;
+	/** With the browser route: the first part of the page, and whether the law-report reference is anywhere in it. */
+	opening?: string;
+	reporterFound?: boolean;
+};
 
 const MARK_ORDER = { ok: 0, warn: 1, fail: 2 } as const;
 
@@ -270,7 +289,7 @@ export function buildVerifyReport(
 
 		// Level 1: does it exist. Party names are often shared, so a page that has the names but not the
 		// reference, year or court that were cited is reported as a possible different case.
-		const details = page?.verified ? checkDetails(item, page.title, page.page) : null;
+		const details = page?.verified ? checkDetails(item, page.title, page.opening ?? page.page, page.reporterFound) : null;
 		const unconfirmed = details && (details.reporter === 'not-found' || details.year === 'mismatch' || details.court === 'mismatch');
 		if (page?.verified && unconfirmed) {
 			found += 1;

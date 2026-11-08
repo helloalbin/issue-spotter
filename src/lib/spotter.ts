@@ -111,6 +111,8 @@ export type ResearchCheck = {
 	quote?: string;
 	/** The quote is the page's own closest wording to what the writer gave, not the writer's words. */
 	approx?: boolean;
+	/** A model reading the official PDF itself also found the passage there. */
+	attested?: boolean;
 };
 
 export type ResearchSentence = {
@@ -137,6 +139,50 @@ export type ResearchSource = {
 	read?: 'text' | 'pdf';
 	/** Only the first part of a long judgment was read. */
 	truncated?: boolean;
+	/** The page was read in the user's browser, which is what the quotes were checked against. */
+	inBrowser?: boolean;
+	/** The file as it was fetched: a SHA-256 of its bytes and when, signed by the server. An audit aid, not proof of the text. */
+	stamp?: SourceStamp;
+};
+
+/** Which file a report was built from, signed so it cannot be edited without notice. */
+export type SourceStamp = { url: string; sha256: string; fetchedAt: string; sig: string };
+
+/** A source the server asks the browser to read. */
+export type GatherSource = { n: number; url: string; title: string; host: string; official: boolean };
+
+/**
+ * What the server hands the browser after the search: the pages to read, what to look for in each,
+ * and a signed grant that lets the browser fetch exactly those addresses and later ask for the report.
+ */
+export type Gather = {
+	token: string;
+	sources: GatherSource[];
+	/** What to select paragraphs for, by source number. */
+	queries: Record<number, string>;
+	/** Most characters of one source to send back. */
+	chars: number;
+	/** Strings to look for in the whole of each page, such as a law-report reference. */
+	needles?: string[];
+	/** Passed back unchanged to the write step. */
+	context?: Record<string, unknown>;
+	/** The first search brief, kept so it can be shown if the write step fails. */
+	draft?: ResearchBrief;
+};
+
+/** What the browser read of one source and sends back: the chosen paragraphs, never the whole page. */
+export type GatheredSource = {
+	n: number;
+	kind: 'html' | 'pdf';
+	title: string;
+	/** The first part of the text, for telling whether the page is the case that was named. */
+	opening: string;
+	excerpt: string;
+	/** Paragraphs were left out of the excerpt. */
+	cut: boolean;
+	/** Which needles the whole page contains. */
+	needles?: Record<string, boolean>;
+	stamp?: SourceStamp;
 };
 
 /** One statement in a report, with the page it rests on. */
@@ -175,6 +221,8 @@ export type Report = {
 	kind: 'research' | 'compare' | 'verify';
 	title: string;
 	sections: ReportSection[];
+	/** Where the pages the quotes were checked against were read. */
+	readIn?: 'browser' | 'server';
 	/** Statements dropped because the page did not contain the quote that was given for them. */
 	dropped: number;
 };
@@ -280,12 +328,14 @@ export type CaseCandidate = {
 export type CompareEvent =
 	| { compare: QuotaInfo }
 	| { stage: 'opening' | 'treatment' | 'reading' | 'writing' }
+	| { gather: Gather }
 	| { brief: ResearchBrief }
 	| { error: string };
 
 export type VerifyEvent =
 	| { verify: QuotaInfo }
 	| { stage: 'reading' | 'finding' | 'opening' | 'checking' }
+	| { gather: Gather }
 	| { brief: ResearchBrief }
 	| { error: string };
 
@@ -293,6 +343,7 @@ export type VerifyEvent =
 export type ResearchEvent =
 	| { research: QuotaInfo }
 	| { stage: 'checking' | 'searching' | 'reading' | 'writing' }
+	| { gather: Gather }
 	| { brief: ResearchBrief }
 	/** The topic is not part of the user's case; nothing was spent. */
 	| { offTopic: string }

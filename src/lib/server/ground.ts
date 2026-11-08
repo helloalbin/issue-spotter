@@ -1,11 +1,7 @@
 import type { ResearchBrief, ResearchSource } from '../spotter.ts';
 
-/** Text reduced to lowercase letters and digits, so line breaks, quotes and punctuation do not matter. */
-export const matchKey = (text: string) =>
-	text
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, ' ')
-		.trim();
+import { matchKey } from '../match.ts';
+export { matchKey };
 
 const MIN_FRAGMENT_WORDS = 4;
 const MIN_QUOTE_WORDS = 6;

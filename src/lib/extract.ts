@@ -1,3 +1,4 @@
+import type { PdfDocument } from './pdf-text.ts';
 import { MAX_IMAGE_BYTES, REJECTED_FILE, sizeLimit, sniffFile } from '#lib/file-types.js';
 import type { FileKind } from '#lib/file-types.js';
 
@@ -51,6 +52,30 @@ async function extractPdf(buffer: ArrayBuffer): Promise<string> {
 	}
 }
 
+/**
+ * Opens a PDF for a moment and hands it to `use`, then closes it. The same loader the upload path
+ * uses, so the PDF library and its worker are fetched once.
+ */
+export async function withPdf<T>(buffer: ArrayBuffer, use: (document: PdfDocument) => Promise<T>): Promise<T> {
+	const [pdfjs, { default: PdfWorker }] = await Promise.all([
+		import('pdfjs-dist'),
+		import('pdfjs-dist/build/pdf.worker.min.mjs?worker')
+	]);
+	// pdf.js types `port` as null, but its own documentation passes a Worker here.
+	// @ts-expect-error
+	const worker = new pdfjs.PDFWorker({ port: new PdfWorker() });
+	try {
+		let document;
+		try {
+			document = await pdfjs.getDocument({ data: new Uint8Array(buffer), worker }).promise;
+		} catch {
+			throw new ExtractError('That PDF could not be opened.');
+		}
+		return await use(document as never);
+	} finally {
+		worker.destroy();
+	}
+}
 async function extractDocx(buffer: ArrayBuffer): Promise<string> {
 	const mammoth = await import('mammoth/mammoth.browser');
 	try {

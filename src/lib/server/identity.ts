@@ -58,6 +58,12 @@ export function researchSubjectFor(locals: App.Locals): Subject {
 	};
 }
 
+/** Who a grant is issued to: the signed-in account or the anonymous visitor, never the IP address. */
+export function grantSubject(locals: App.Locals): string {
+	const base = subjectFor(locals);
+	return `${base.ns}:${base.id}`;
+}
+
 export type Tier = 'free' | 'investigative' | 'researcher';
 
 /** Everyone is on the free tier until tiers exist (build step 5). */

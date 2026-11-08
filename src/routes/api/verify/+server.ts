@@ -5,14 +5,17 @@ import {
 	DEEP_RESEARCH_READ_CHARS,
 	DEEP_RESEARCH_TIMEOUT_MS,
 	OPENAI_API_KEY,
-	OPENAI_MODEL
+	OPENAI_MODEL,
+	SOURCE_READING
 } from '$app/env/private';
 import { pageIsCase } from '#lib/server/compare.js';
 import { Deadline } from '#lib/server/deadline.js';
 import { selectExcerpts } from '#lib/server/excerpt.js';
 import { isPdfUrl } from '#lib/server/ground.js';
-import { tierOf, verifySubjectFor, writeModelFor } from '#lib/server/identity.js';
-import { post, readAnswer, writerBody } from '#lib/server/openai.js';
+import { issueGrant } from '#lib/server/grants.js';
+import { grantSubject, tierOf, verifySubjectFor, writeModelFor } from '#lib/server/identity.js';
+import { post, readAnswer } from '#lib/server/openai.js';
+import { checkSupport } from '#lib/server/verify-run.js';
 import { fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import { RESEARCH_DOMAINS, cleanUrl, isOfficialHost } from '#lib/server/research.js';
@@ -21,15 +24,12 @@ import {
 	FIND_RETRY_INSTRUCTIONS,
 	PARSE_INSTRUCTIONS,
 	PARSE_SCHEMA,
-	SUPPORT_INSTRUCTIONS,
-	SUPPORT_SCHEMA,
 	buildVerifyReport,
 	checkDetails,
 	findInput,
 	parseFound,
 	parseItems,
 	parseSupport,
-	supportInput
 } from '#lib/server/verify-cites.js';
 import type { Located } from '#lib/server/verify-cites.js';
 import { hostOf, isAllowedHost } from '#lib/server/verify.js';
@@ -184,6 +184,37 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 					}
 				}
 
+				if (SOURCE_READING === 'browser') {
+					// The pages, official PDFs included, are read in the user's browser: hand it a signed list.
+					const urlList: string[] = [];
+					const itemSource: Record<number, number> = {};
+					for (const item of items) {
+						const raw = urls.get(item.id);
+						const url = raw ? cleanUrl(raw) : '';
+						const host = url ? hostOf(url) : null;
+						if (!url || !host || !isAllowedHost(host, RESEARCH_DOMAINS)) continue;
+						if (!urlList.includes(url)) urlList.push(url);
+						itemSource[item.id] = urlList.indexOf(url) + 1;
+					}
+					if (urlList.length > 0) {
+						const sourcesList = urlList.map((url, at) => ({ n: at + 1, url, title: '', host: hostOf(url) ?? '', official: isOfficialHost(hostOf(url) ?? '') }));
+						send({
+							gather: {
+								token: await issueGrant('verify', grantSubject(locals), reservation.day, urlList),
+								sources: sourcesList,
+								queries: Object.fromEntries(
+									sourcesList.map((source) => [source.n, items.filter((item) => itemSource[item.id] === source.n).map((item) => `${item.proposition} ${item.name}`).join(' ')])
+								),
+								chars: DEEP_RESEARCH_READ_CHARS,
+								needles: [...new Set(items.map((item) => item.reporter).filter(Boolean))],
+								context: { items, itemSource, searches }
+							}
+						});
+						send({ verify: quotaInfo(subject, remaining) });
+						return;
+					}
+				}
+
 				// 3. Open the pages. One page can answer more than one citation.
 				send({ stage: 'opening' });
 				const pagesByUrl = new Map<string, Awaited<ReturnType<typeof fetchPage>> | null>();
@@ -227,7 +258,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 
 				// 4. Does each judgment say what it is cited for? The only step a model does.
 				const rows = items.filter((item) => item.proposition && located.get(item.id)?.verified).map((item) => ({ item, n: located.get(item.id)!.n }));
-				const support = new Map<number, ReturnType<typeof parseSupport>[number]>();
+				let support = new Map<number, ReturnType<typeof parseSupport>[number]>();
 				let supportChecked = true;
 				if (rows.length > 0) {
 					send({ stage: 'checking' });
@@ -238,23 +269,9 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 						// A page cited for several points is shown once, with the passages chosen for the first.
 						if (!used.has(n)) used.set(n, { n, title: page.title, host: source.host, text: page.excerpt, cut: page.cut });
 					}
-					const model = writeModelFor(tierOf(locals)) ?? searchModel;
-					try {
-						const response = await post(fetch, '/responses', writerBody(model, SUPPORT_INSTRUCTIONS, [{ type: 'input_text', text: supportInput(rows, [...used.values()].sort((a, b) => a.n - b.n)) }], 'citation_support', SUPPORT_SCHEMA), deadline.signal);
-						if (response.ok) {
-							const payload = await response.json();
-							console.log(JSON.stringify({ event: 'llm_usage', call: 'verify_support', model, promptTokens: payload?.usage?.input_tokens ?? null, completionTokens: payload?.usage?.output_tokens ?? null, reasoningTokens: payload?.usage?.output_tokens_details?.reasoning_tokens ?? null, status: payload?.status ?? null, citations: rows.length }));
-							for (const verdict of parseSupport(readAnswer(payload).text)) support.set(verdict.id, verdict);
-							supportChecked = support.size > 0;
-						} else {
-							console.error(`Checking support failed (${response.status}):`, await response.text());
-							supportChecked = false;
-						}
-					} catch (error) {
-						if (cancelled) return;
-						console.error('Checking support failed:', error);
-						supportChecked = false;
-					}
+					const ran = await checkSupport(fetch, writeModelFor(tierOf(locals)) ?? searchModel, rows, [...used.values()].sort((a, b) => a.n - b.n), deadline.signal);
+					support = ran.support;
+					supportChecked = ran.checked;
 				}
 
 				const report = buildVerifyReport(items, located, support, { unreadable, supportChecked });

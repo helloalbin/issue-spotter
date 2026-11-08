@@ -105,7 +105,7 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 					return { ...none, url, host, official, problem: 'Only an official PDF was found, which the app cannot read yet. Try the Indian Kanoon citation.' };
 				}
 				try {
-					const page = await fetchPage(fetch, url, { domains: RESEARCH_DOMAINS, maxChars: 30000, signal: deadline.signal, allowLocal: import.meta.env.DEV });
+					const page = await fetchPage(fetch, url, { domains: RESEARCH_DOMAINS, maxChars: 30000, maxBytes: 250_000, signal: deadline.signal, allowLocal: import.meta.env.DEV });
 					const verified = pageIsCase(entry.name, page.title, page.text);
 					return {
 						...base,

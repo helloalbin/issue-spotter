@@ -8,6 +8,7 @@ import {
 	DEEP_RESEARCH_READ_SOURCES,
 	DEEP_RESEARCH_TIMEOUT_MS,
 	DEEP_RESEARCH_WRITE_MAX_TOKENS,
+	SOURCE_READING,
 	OPENAI_API_KEY,
 	OPENAI_BASE_URL,
 	OPENAI_MODEL,
@@ -17,7 +18,8 @@ import {
 import { Deadline } from '#lib/server/deadline.js';
 import { selectExcerpts } from '#lib/server/excerpt.js';
 import { isPdfUrl, pickSources } from '#lib/server/ground.js';
-import { researchSubjectFor, tierOf, writeModelFor } from '#lib/server/identity.js';
+import { issueGrant } from '#lib/server/grants.js';
+import { grantSubject, researchSubjectFor, tierOf, writeModelFor } from '#lib/server/identity.js';
 import { isReasoningModel, post } from '#lib/server/openai.js';
 import { checkUrl, fetchPage } from '#lib/server/page.js';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
@@ -402,7 +404,28 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 				}
 
 				let finished = brief;
-				if (DEEP_RESEARCH_READ_SOURCES > 0) {
+				const picked = DEEP_RESEARCH_READ_SOURCES > 0 && SOURCE_READING === 'browser' ? pickSources(brief, DEEP_RESEARCH_READ_SOURCES) : [];
+				if (picked.length > 0) {
+					// The pages are read in the user's browser: hand it a signed list and wait for it to come back.
+					const leads = brief.blocks
+						.flatMap((block) => (block.kind === 'paragraph' ? block.sentences.map((sentence) => sentence.text) : []))
+						.join(' ')
+						.slice(0, 3000);
+					const sources = picked.map((source, at) => ({ n: at + 1, url: source.url, title: source.title, host: source.host, official: source.official }));
+					send({
+						gather: {
+							token: await issueGrant('research', grantSubject(locals), reservation.day, sources.map((source) => source.url)),
+							sources,
+							queries: Object.fromEntries(sources.map((source) => [source.n, `${topic} ${leads}`])),
+							chars: DEEP_RESEARCH_READ_CHARS,
+							context: { leads, searches: brief.searches },
+							draft: brief
+						}
+					});
+					send({ research: quotaInfo(subject, remaining) });
+					return;
+				}
+				if (DEEP_RESEARCH_READ_SOURCES > 0 && SOURCE_READING === 'server') {
 					try {
 						const writer = writeModelFor(tierOf(locals)) ?? model;
 						finished = await writeReport(fetch, brief, facts, topic, writer, deadline.signal, (next) => send({ stage: next }));

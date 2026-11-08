@@ -238,6 +238,22 @@ export function weekly(activity: Activity, now: number): { bars: Bar[]; months: 
 	return { bars, months };
 }
 
+export type RecentDay = { date: string; label: string; count: number };
+
+/** The last `days` days, oldest first, with how many runs each held and the total. */
+export function recentDays(activity: Activity, now: number, days = 30): { days: RecentDay[]; total: number } {
+	const today = dayIndex(dayKey(now));
+	const out: RecentDay[] = [];
+	let total = 0;
+	for (let i = today - days + 1; i <= today; i++) {
+		const date = keyOfIndex(i);
+		const count = activity.days[date]?.runs ?? 0;
+		total += count;
+		out.push({ date, label: longDate(date), count });
+	}
+	return { days: out, total };
+}
+
 /** What is read back from storage, made safe: anything that is not the right shape is dropped. */
 export function parseActivity(raw: string | null): Activity {
 	if (!raw) return emptyActivity();

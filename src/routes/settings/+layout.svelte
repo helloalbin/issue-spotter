@@ -10,7 +10,7 @@
 	/** The sections of settings. Those without a link are not built yet and are shown, unusable, so the menu matches the design. */
 	const SECTIONS: { label: string; icon: IconName; href?: string }[] = [
 		{ label: 'Appearance', icon: 'sun', href: '/settings/appearance' },
-		{ label: 'Usage', icon: 'gauge' },
+		{ label: 'Usage', icon: 'gauge', href: '/settings/usage' },
 		{ label: 'Data controls', icon: 'database' },
 		{ label: 'Account', icon: 'circleUser' }
 	];

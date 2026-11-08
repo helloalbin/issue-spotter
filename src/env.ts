@@ -59,6 +59,15 @@ export const variables = defineEnvVars({
 		description: 'Non-legal rejections are free up to this multiple of the daily limits.',
 		schema: (value) => positiveInt(value, 3)
 	},
+	CONTACT_INBOX: {
+		// A secret, so it is not present when Workers builds. It must be a verified destination address in Cloudflare Email Routing.
+		description: 'Where Contact form messages are delivered. Without it the form falls back to the visitor\'s mail app.',
+		schema: (value) => value ?? ''
+	},
+	CONTACT_FROM: {
+		description: 'The address Contact form messages are sent from. It must be on the domain that has Email Routing.',
+		schema: (value) => value || 'noreply@legalspotter.com'
+	},
 	QUOTA_SALT: {
 		// Validated at request time (see hooks.server.ts): secrets are not present when Workers builds.
 		description: 'Secret salt mixed into hashed IPs before they are stored. Required in production.',

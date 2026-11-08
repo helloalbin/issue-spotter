@@ -63,6 +63,15 @@
 		not stored by us. Copying or downloading it happens in your browser.
 	</p>
 
+	<h2>Contact messages</h2>
+	<p>
+		When you send a message through the Contact form, our server passes your message and the email
+		address you give to our support inbox through Cloudflare's email service. We do not store it in our
+		own database. We use the address only to reply. We count messages per day, using the same random
+		ID and hashed IP address as your searches, so the form cannot be used to flood us. Mail is then
+		kept in the inbox like any other email until we delete it.
+	</p>
+
 	<h2>Appearance</h2>
 	<p>
 		Your choice of light, dark or system appearance is saved in this browser only. We do not receive

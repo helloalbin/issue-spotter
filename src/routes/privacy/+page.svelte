@@ -45,6 +45,13 @@
 		</li>
 	</ul>
 
+	<h2>Checking references</h2>
+	<p>
+		When reference checking is on, the names of the cases, acts and sections in an analysis are sent
+		to OpenAI's web search to look for their pages on legal sites. The facts you typed are not part
+		of that request.
+	</p>
+
 	<h2>Links to other sites</h2>
 	<p>
 		References in an analysis link to a search on Indian Kanoon, or on Google when the facts point
@@ -81,6 +88,10 @@
 		<li><strong>Cloudflare</strong> hosts the site and stores the daily search counters.</li>
 		<li><strong>Google Firebase</strong> handles sign-in and stores your account details.</li>
 		<li><strong>An AI model provider</strong> receives the facts you submit to produce the analysis.</li>
+		<li>
+			<strong>OpenAI's web search</strong>, when reference checking is on, receives the names of
+			the references to find their pages.
+		</li>
 	</ul>
 	<p>We do not sell your data or use it for advertising.</p>
 

@@ -79,6 +79,7 @@ There is no user table and nothing user-written is persisted. The only stored da
 | `src/routes/api/me/+server.ts` | `GET /api/me`: the current user (or null) and their remaining searches. |
 | `src/lib/spotter.ts` | Shared (client and server): constants, result and event types, the legal-vocabulary heuristic. |
 | `src/lib/sources.ts` | `searchLink`, `caseLink`, `actLink`, `sectionLink`: builds the search links on references (Indian Kanoon for Indian law, otherwise Google). Has tests. |
+| `src/lib/server/sources.ts`, `verify.ts` | Reference verification: the web-search call (`verifySources`) and the pure matching of citations to references (`matchSources`, with tests). |
 | `src/lib/server/deadline.ts` | `Deadline`: idle and total time limits for one provider call, combined with the user's abort signal. Has tests. |
 | `src/lib/server/section-stream.ts` | `SectionParser`: reads the streamed JSON reply and reports each finished entry and section. Has tests. |
 | `src/lib/server/quota.ts` | D1 quota functions: `reserve`, `release`, `peek`. |
@@ -102,7 +103,8 @@ There is no user table and nothing user-written is persisted. The only stored da
 6. **Refunds.** A provider error refunds the search. A `notLegal` rejection is free up to `QUOTA_REJECTION_MULTIPLIER` times the daily limits, then it counts.
 7. Mid-stream failures arrive as an `{error}` event, not a status code.
 8. **Timeouts.** Each provider call runs under a `Deadline` (`src/lib/server/deadline.ts`). The analysis must produce a response or a new chunk within `PROVIDER_IDLE_TIMEOUT_MS` and finish within `ANALYSIS_TOTAL_TIMEOUT_MS`; the classifier gets `CLASSIFIER_TIMEOUT_MS`. A stalled or overrunning analysis aborts the upstream request, **refunds the search** and sends `{error: "The model provider took too long to respond. Please try again."}`. A classifier timeout fails open like any classifier error. The user's own Stop is not a timeout and is not refunded.
-9. **Cancel.** If the client aborts (the Stop button), the stream's `cancel()` aborts the upstream provider request, so generation and cost stop. The search is **not** refunded, because the provider already did part of the work. The server logs `{"event":"search_cancelled"}`.
+9. **Reference verification** (when `SOURCE_VERIFICATION` allows it for this user, and the jurisdiction is Indian or unstated). After `result`, the server sends `{stage: "sourcing"}` and runs one Responses API call (`src/lib/server/sources.ts`) with the `web_search` tool restricted to `SOURCE_DOMAINS` (indiankanoon.org, indiacode, sci.gov.in), listing every case, act and the first three sections of each act. The model's own mapping is ignored. `matchSources` (`src/lib/server/verify.ts`) accepts a link for a reference only if it came back as a `url_citation` annotation, is on an allowed host, and its page title matches the reference: party names for a case (a year more than two years off rejects it), every word and number for an act, the section number and the act for a provision (Section 74 never matches a Section 73 page). It sends `{sources: [{key, url, title, host}]}` and the client upgrades those links; everything else keeps its search link. It never fails the search: an error, a timeout or no matches leaves `sources: []`. The answer is already on screen, because the client treats `result` as complete and reads the rest of the stream afterwards. The call is logged as `llm_usage` with `call: "sources"` and `webSearches`. **Cost:** about $0.011 per search call on gpt-4o-mini ($10 per 1,000 calls plus a fixed 8,000 input tokens), roughly ten times the analysis, which is why it is off by default and can be limited to signed-in users.
+10. **Cancel.** If the client aborts (the Stop button), the stream's `cancel()` aborts the upstream provider request, so generation and cost stop. The search is **not** refunded, because the provider already did part of the work. The server logs `{"event":"search_cancelled"}`.
 
 The classifier **fails open**: if it errors or answers unclearly, the analysis proceeds. Blocking a valid case is worse than one extra call.
 
@@ -157,6 +159,10 @@ Every model call logs one structured line: `{"event":"llm_usage","call":"classif
 | `CLASSIFIER_TIMEOUT_MS` | no | 8000 | Longest the classifier call may take. On a timeout it fails open and the analysis proceeds. |
 | `PROVIDER_IDLE_TIMEOUT_MS` | no | 20000 | Longest the analysis call may go without a response or a new chunk. |
 | `ANALYSIS_TOTAL_TIMEOUT_MS` | no | 90000 | Longest the whole analysis call may take, even while it keeps streaming. |
+| `SOURCE_VERIFICATION` | no | off | `off`, `signed-in` or `all`. Verify cited references with OpenAI web search after the answer. Costs about a cent each. OpenAI only (Responses API). |
+| `SOURCE_MODEL` | no | `OPENAI_MODEL` | Model for the reference web search. |
+| `SOURCE_TIMEOUT_MS` | no | 30000 | Longest the reference search may take. On a timeout the search links stay. |
+| `SOURCE_MAX_SEARCHES` | no | 6 | Most web searches one verification may run (sent as `max_tool_calls`). Each is billed. |
 
 Where to set them:
 - `npm run dev` reads **`.env`**.
@@ -229,8 +235,8 @@ Open decisions before deploy: canonical host (bare domain, with `www` redirected
 
 ## Known issues and open work
 
-1. **Hallucinated citations.** Precedents, years and sections are model output with no verification. The links on references are searches the user runs, not checks we make. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
-2. **Little test coverage.** Only `SectionParser`, `Deadline` and the source links have tests. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
+1. **Hallucinated citations.** Precedents, years and sections are model output with no verification. Links are search links by default. With `SOURCE_VERIFICATION` on, references that a web search returned on a legal site with a matching title are marked verified and link to that page. That shows the page exists, not that the case supports the point, and it does not fix a model that cites irrelevant cases (the real fix is retrieval-first grounding). A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
+2. **Little test coverage.** Only `SectionParser`, `Deadline`, the source links and the reference matcher have tests. The live web-search call has not been run against real OpenAI: whether `web_search` works with `gpt-4o-mini`, `max_tool_calls`, and domain filters should be confirmed with one real search. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
 3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The privacy and terms pages exist, so the consent screen can link to them. The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
 3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.

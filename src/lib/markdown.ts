@@ -10,7 +10,7 @@ export function toMarkdown(
 	sources: Record<string, SourceMatch> = {}
 ): string {
 	const lines: string[] = ['# Issue analysis', '', '## Case facts', '', (turns[0] ?? '').trim(), ''];
-	turns.slice(1).forEach((turn) => lines.push('### Added facts', '', turn.trim(), ''));
+	turns.slice(1).forEach((turn) => lines.push('### Added to the case', '', turn.trim(), ''));
 
 	lines.push('## Primary legal issues', '');
 	result.issues.forEach((item, index) => lines.push(`${index + 1}. ${item}`));

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { auth } from '#lib/auth.svelte.js';
 	import AnalysisResult from '#lib/components/AnalysisResult.svelte';
 	import Composer from '#lib/components/Composer.svelte';
@@ -15,6 +15,25 @@
 
 	let mounted = $state(false);
 	onMount(() => (mounted = true));
+
+	let mainEl = $state<HTMLElement>();
+
+	// A new analysis is brought into view where it starts, so the earlier ones stay above it.
+	let seen = 0;
+	$effect(() => {
+		const count = workspace.thread.length;
+		if (count > seen && count > 1) {
+			tick().then(() => document.getElementById(`exchange-${count - 1}`)?.scrollIntoView({ block: 'start' }));
+		}
+		seen = count;
+	});
+
+	// While a follow-up is being analysed, show its message and progress at the end of the thread.
+	$effect(() => {
+		if (workspace.isLoading && workspace.thread.length > 0) {
+			tick().then(() => mainEl?.scrollTo({ top: mainEl.scrollHeight }));
+		}
+	});
 
 	let quota = $derived(workspace.liveQuota ?? data.quota);
 	let outOfSearches = $derived(quota !== null && quota.remaining === 0);
@@ -62,19 +81,37 @@
 	</div>
 {/snippet}
 
-<main id="main" class="flex-1 overflow-y-auto">
-	{#if workspace.isLoading}
+<main id="main" bind:this={mainEl} class="flex-1 overflow-y-auto">
+	{#if workspace.thread.length > 0}
+		{#each workspace.thread as exchange, index (index)}
+			<AnalysisResult
+				{exchange}
+				{index}
+				turns={workspace.turns.slice(0, index + 1)}
+				isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
+				onEdit={() => workspace.editLast()}
+			/>
+		{/each}
+
+		{#if workspace.isLoading}
+			<div class="mx-auto w-full max-w-3xl border-t border-border-subtle px-6 pt-8">
+				<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
+					<span class="type-meta tracking-widest text-text-tertiary">ADDED TO CASE</span>
+					<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{workspace.pending}</p>
+				</div>
+			</div>
+			<Progress
+				stage={workspace.stage}
+				streamed={workspace.streamed}
+				closed={workspace.closed}
+				followUp
+			/>
+		{/if}
+	{:else if workspace.isLoading}
 		<Progress
 			stage={workspace.stage}
 			streamed={workspace.streamed}
 			closed={workspace.closed}
-			followUp={workspace.turns.length > 0}
-		/>
-	{:else if workspace.result}
-		<AnalysisResult
-			turns={workspace.turns}
-			result={workspace.result}
-			onEdit={() => workspace.editFacts()}
 		/>
 	{:else}
 		<div class="mx-auto flex min-h-full w-full max-w-170 flex-col px-6">
@@ -122,7 +159,7 @@
 	{/if}
 </main>
 
-{#if workspace.isLoading || workspace.result}
+{#if workspace.isLoading || workspace.thread.length > 0}
 	<div class="border-t border-border-subtle px-6 py-4">
 		<div class="mx-auto w-full max-w-3xl">
 			{#if workspace.errorMessage}

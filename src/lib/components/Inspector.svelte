@@ -4,8 +4,11 @@
 	import { workspace } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
 
-	let result = $derived(workspace.result);
-	let meta = $derived(workspace.meta);
+	let latest = $derived(workspace.latest);
+	let result = $derived(latest?.result ?? null);
+	let meta = $derived(latest?.meta ?? null);
+	let sourceMatches = $derived(latest?.sources ?? {});
+	let verification = $derived(latest?.verification ?? 'idle');
 
 	let path = $derived(
 		result
@@ -23,7 +26,7 @@
 		result
 			? [
 					...result.precedents.map((precedent, index) => {
-						const match = workspace.sources[caseKey(index)];
+						const match = sourceMatches[caseKey(index)];
 						return {
 							name: precedent.name,
 							kind: 'Case' as const,
@@ -32,7 +35,7 @@
 						};
 					}),
 					...result.acts.map((entry, index) => {
-						const match = workspace.sources[actKey(index)];
+						const match = sourceMatches[actKey(index)];
 						return {
 							name: entry.act,
 							kind: 'Statute' as const,
@@ -45,7 +48,7 @@
 	);
 
 	// Section links verified on their own count too, so the total is every verified reference.
-	let verified = $derived(Object.keys(workspace.sources).length);
+	let verified = $derived(Object.keys(sourceMatches).length);
 
 	let hosts = $derived([...new Set(sources.map((source) => source.link.host))]);
 </script>
@@ -65,7 +68,9 @@
 	<div class="flex items-start justify-between">
 		<div>
 			<h2 class="text-md leading-tight font-semibold tracking-[-0.2px]">Verification</h2>
-			<p class="text-[11px] text-text-tertiary">Sources &amp; search path</p>
+			<p class="text-[11px] text-text-tertiary">
+				{workspace.thread.length > 1 ? 'Latest analysis' : 'Sources & search path'}
+			</p>
 		</div>
 		<button
 			type="button"
@@ -108,7 +113,7 @@
 		<div class="flex items-center justify-between">
 			<h3 class="font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">SOURCES</h3>
 			<span class="flex items-center gap-1.5 text-[11px] text-text-tertiary">
-				{#if workspace.verification === 'running'}
+				{#if verification === 'running'}
 					<Icon name="loader" size={11} class="spin" />
 					Verifying…
 				{:else if verified > 0}

@@ -2,16 +2,27 @@
 	import { toMarkdown } from '#lib/markdown.js';
 	import { caseLink, sectionLink } from '#lib/sources.js';
 	import { caseKey, lookupCount, sectionKey } from '#lib/spotter.js';
-	import { workspace } from '#lib/workspace.svelte.js';
-	import type { SpotterResult } from '#lib/spotter.js';
+	import type { Exchange } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
 
-	type Props = { turns: string[]; result: SpotterResult; onEdit: () => void };
-	let { turns, result, onEdit }: Props = $props();
+	type Props = {
+		exchange: Exchange;
+		/** Its place in the conversation: 0 is the first message. */
+		index: number;
+		/** The messages of the case up to and including this one, for the Markdown export. */
+		turns: string[];
+		/** Only the latest message can be taken back to rewrite. */
+		isLast: boolean;
+		onEdit: () => void;
+	};
+	let { exchange, index, turns, isLast, onEdit }: Props = $props();
 
-	/** Which copy button shows "Copied": a message by its position, or the whole analysis. */
-	let copied = $state<number | 'markdown' | null>(null);
-	let verifiedCount = $derived(Object.keys(workspace.sources).length);
+	let result = $derived(exchange.result);
+	let sources = $derived(exchange.sources);
+	let verification = $derived(exchange.verification);
+
+	let copied = $state<'message' | 'markdown' | null>(null);
+	let verifiedCount = $derived(Object.keys(sources).length);
 
 	const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 	let summary = $derived(
@@ -23,7 +34,7 @@
 		].join(' · ')
 	);
 
-	async function copy(kind: number | 'markdown', text: string) {
+	async function copy(kind: 'message' | 'markdown', text: string) {
 		try {
 			await navigator.clipboard.writeText(text);
 			copied = kind;
@@ -41,46 +52,48 @@
 	</h3>
 {/snippet}
 
-<article class="mx-auto w-full max-w-3xl px-6 py-8">
-	<div class="flex flex-col gap-3">
-		{#each turns as turn, index}
-			<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
-				<div class="flex items-center justify-between">
-					<span class="type-meta tracking-widest text-text-tertiary">
-						{index === 0 ? 'CASE FACTS' : 'ADDED FACTS'}
-					</span>
-					<span class="flex items-center gap-3 text-caption text-text-tertiary">
-						<button
-							type="button"
-							onclick={() => copy(index, turn)}
-							class="flex items-center gap-1 hover:text-text-primary"
-						>
-							<Icon name={copied === index ? 'check' : 'copy'} size={12} />
-							{copied === index ? 'Copied' : 'Copy'}
-						</button>
-						{#if index === 0}
-							<button
-								type="button"
-								onclick={onEdit}
-								class="flex items-center gap-1 hover:text-text-primary"
-							>
-								<Icon name="pencil" size={12} />
-								Edit
-							</button>
-						{/if}
-					</span>
-				</div>
-				<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{turn}</p>
-			</div>
-		{/each}
+<article
+	id="exchange-{index}"
+	class="mx-auto w-full max-w-3xl scroll-mt-4 px-6 py-8 {index > 0 ? 'border-t border-border-subtle' : ''}"
+>
+	<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
+		<div class="flex items-center justify-between">
+			<span class="type-meta tracking-widest text-text-tertiary">
+				{index === 0 ? 'CASE FACTS' : 'ADDED TO CASE'}
+			</span>
+			<span class="flex items-center gap-3 text-caption text-text-tertiary">
+				<button
+					type="button"
+					onclick={() => copy('message', exchange.added)}
+					class="flex items-center gap-1 hover:text-text-primary"
+				>
+					<Icon name={copied === 'message' ? 'check' : 'copy'} size={12} />
+					{copied === 'message' ? 'Copied' : 'Copy'}
+				</button>
+				{#if isLast}
+					<button
+						type="button"
+						onclick={onEdit}
+						class="flex items-center gap-1 hover:text-text-primary"
+					>
+						<Icon name="pencil" size={12} />
+						Edit
+					</button>
+				{/if}
+			</span>
+		</div>
+		<p class="type-body mt-2 whitespace-pre-wrap text-text-secondary">{exchange.added}</p>
 	</div>
 
 	<header class="mt-8 flex items-center gap-3">
 		<span class="grid size-8 place-items-center rounded-pill bg-surface-2 text-text-secondary">
 			<Icon name="check" />
 		</span>
-		<h2 class="type-h3">Issue analysis</h2>
+		<h2 class="type-h3">{index === 0 ? 'Issue analysis' : 'Updated analysis'}</h2>
 	</header>
+	{#if index > 0}
+		<p class="mt-1 text-caption text-text-tertiary">Covers all the facts so far, including this message.</p>
+	{/if}
 	<div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-2">
 		<p class="type-meta text-text-tertiary">{summary}</p>
 		{#if result.jurisdiction}
@@ -94,7 +107,7 @@
 		<span
 			class="flex items-center gap-[5px] rounded-pill border border-border-subtle bg-surface-1 px-[9px] py-[3px] text-[11px] text-text-tertiary"
 		>
-			{#if workspace.verification === 'running'}
+			{#if verification === 'running'}
 				<Icon name="loader" size={11} class="spin" />
 				Verifying links
 			{:else if verifiedCount > 0}
@@ -144,9 +157,9 @@
 			{@render heading('Landmark precedents', result.precedents.length)}
 			{#if result.precedents.length > 0}
 				<ul class="mt-4 grid gap-x-7 gap-y-3.5 sm:grid-cols-2">
-					{#each result.precedents as precedent, index}
+					{#each result.precedents as precedent, precedentIndex}
 						{@const search = caseLink(precedent, result.jurisdiction)}
-						{@const match = workspace.sources[caseKey(index)]}
+						{@const match = sources[caseKey(precedentIndex)]}
 						<li>
 							<a
 								href={match?.url ?? search.href}
@@ -196,7 +209,7 @@
 								<ul class="mt-2 flex flex-wrap gap-1.5">
 									{#each entry.sections as section, sectionIndex}
 										{@const search = sectionLink(entry.act, section, result.jurisdiction)}
-										{@const match = workspace.sources[sectionKey(actIndex, sectionIndex)]}
+										{@const match = sources[sectionKey(actIndex, sectionIndex)]}
 										<li>
 											<a
 												href={match?.url ?? search.href}
@@ -245,7 +258,7 @@
 	<div class="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">
 		<button
 			type="button"
-			onclick={() => copy('markdown', toMarkdown(turns, result, workspace.sources))}
+			onclick={() => copy('markdown', toMarkdown(turns, result, sources))}
 			class="flex items-center gap-2 rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition hover:bg-surface-2 hover:text-text-primary"
 		>
 			<Icon name={copied === 'markdown' ? 'check' : 'copy'} size={14} />

@@ -70,7 +70,7 @@
 				<Icon name="menu" />
 			</button>
 			<span class="ml-auto flex items-center gap-2.5">
-				{#if workspace.result}
+				{#if workspace.latest}
 					<button
 						type="button"
 						onclick={() => workspace.togglePane()}
@@ -91,7 +91,7 @@
 		</div>
 	</div>
 
-	{#if workspace.result && workspace.paneOpen}
+	{#if workspace.latest && workspace.paneOpen}
 		<Inspector />
 	{/if}
 </div>

@@ -32,7 +32,7 @@ Jurisdiction: the system prompt tells the model to infer the jurisdiction from t
 - **SvelteKit 3** (`@sveltejs/kit ^3`), **Svelte 5** with runes forced on for all non-`node_modules` files (see `vite.config.ts`).
 - **Firebase Auth** (Google sign-in) in the browser via the `firebase` SDK (pinned to 12.x, since 13.x needs Node 24.12+), and `jose` on the server to verify ID tokens.
 - **Cloudflare Workers** via `@sveltejs/adapter-cloudflare`, configured in `wrangler.jsonc`. **D1** (SQLite) holds quota counters.
-- **Tailwind CSS 4** via `@tailwindcss/vite`. The only stylesheet is `src/routes/layout.css`.
+- **Tailwind CSS 4** via `@tailwindcss/vite`. The only stylesheet is `src/routes/layout.css`, which holds the design tokens (see [`UI_CONTEXT.md`](UI_CONTEXT.md)). Inter and JetBrains Mono are self-hosted through `@fontsource-variable`.
 - **TypeScript 6**, `strict: true`. **Vite 8**.
 - An OpenAI-compatible Chat Completions API is the model provider.
 - No test runner, linter or formatter is configured.
@@ -58,7 +58,14 @@ There is no user table and nothing user-written is persisted. The only stored da
 
 | Path | Role |
 | --- | --- |
-| `src/routes/+page.svelte` | The whole UI. Form, quota counter, context tip, staged status, result cards, notices. |
+| `src/routes/+page.svelte` | The app page: state, auth wiring, the streaming request, and the layout (sidebar, composer, progress, results). |
+| `src/routes/privacy`, `src/routes/terms` | Privacy policy and terms of use, built on `LegalDocument.svelte`. |
+| `src/routes/design-system` | Development-only token and primitive reference. Returns 404 in production. |
+| `src/routes/layout.css` | The design tokens, type scale and text styles. The only file allowed to contain raw colors. |
+| `src/lib/components/` | `Sidebar`, `SignInDialog`, `Progress`, `AnalysisResult`, `LegalDocument`, `Button`, `Chip`, `Icon`, `ThemeToggle`, `GoogleMark`. |
+| `src/lib/site.ts`, `samples.ts`, `markdown.ts` | Brand name and contact address, sample fact patterns, the Copy as Markdown export. |
+| `scripts/check-tokens.mjs` | `npm run check:tokens`: fails on any raw color in `src/` outside `layout.css`. |
+| `static/favicon/` | Generated icon set and web manifest, linked from `src/app.html`. |
 | `src/routes/+page.server.ts` | Loads the visitor's remaining quota (read only) so the counter renders on first paint. |
 | `src/routes/api/spot/+server.ts` | `POST` handler: validation, quota, classifier, analysis, streaming, usage logging. |
 | `src/hooks.server.ts` | Issues the anonymous cookie, hashes the client IP, verifies a bearer token into `locals.user` (or sets `locals.authFailed`). Requires `QUOTA_SALT` in production. |
@@ -159,6 +166,7 @@ npm install
 npm run dev              # vite dev, reads .env
 npm run db:migrate:local # apply migrations to the local D1 database (once per fresh clone)
 npm run check            # svelte-kit sync + svelte-check
+npm run check:tokens     # fail on raw colors outside the design tokens
 npm run build            # builds with adapter-cloudflare
 npm run preview:worker   # build, then run in the Workers runtime (workerd), reads .dev.vars
 ```
@@ -211,11 +219,11 @@ Open decisions before deploy: canonical host (bare domain, with `www` redirected
 1. **Hallucinated citations.** Precedents and sections are model output with no verification. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
 2. **No tests.** `quota.ts`, `looksLegal` and the normalizers are pure or small and are the first candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
-3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
+3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The privacy and terms pages exist, so the consent screen can link to them. The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
 3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.
 4. **No timeout or retry** on the upstream model `fetch`. A stalled provider leaves the stream open.
 5. **README is stale.** It omits quota, the classifier, `acts`, Cloudflare and the env vars.
-6. **Summary line grammar.** "1 issues" is not singularized (the acts badge is).
+6. **Privacy and terms need legal review** before public launch. They are plain-language drafts. They name no operating entity and carry no governing-law or venue clause, and the privacy page says "an AI model provider" without naming it. Update `LEGAL_UPDATED` in `src/lib/site.ts` when the text changes.
 7. **`npm audit`:** low-severity advisories reported earlier under the previous adapter. Recheck.
 8. **No rate limiting beyond the quota,** and no bot challenge.
 9. **Per-browser quota is bypassable** by clearing cookies (see Quota).
@@ -228,4 +236,5 @@ Open decisions before deploy: canonical host (bare domain, with `www` redirected
 - Keep the "not legal advice, verify against primary sources" disclaimers.
 - Never truncate or rewrite the user's input.
 - Never commit secrets, `.env`, `.dev.vars`, service-account files or `design/`. Firebase web config is public by design; a service-account JSON is not.
-- Run `npm run check` before committing. For UI changes, look at the page in a browser. `curl` tests do not catch missing markup.
+- No raw colors (hex, `rgb()`, and so on) outside `src/routes/layout.css`. Use the token classes (`bg-surface-1`, `text-text-primary`, `border-border-subtle`). `npm run check:tokens` enforces it.
+- Run `npm run check` and `npm run check:tokens` before committing. For UI changes, look at the page in a browser. `curl` tests do not catch missing markup.

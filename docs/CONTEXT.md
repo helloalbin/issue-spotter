@@ -60,7 +60,8 @@ There is no user table and nothing user-written is persisted. The only stored da
 | --- | --- |
 | `src/routes/+layout.svelte` | The app shell: sidebar, top bar, theme toggle, sign-in dialog. Initialises auth and refreshes the quota when who is acting changes. |
 | `src/routes/+page.svelte` | The analysis page: empty state, progress, results, messages and the docked composer. |
-| `src/lib/workspace.svelte.ts` | Analysis state (facts, result, stage, quota) and the streaming `submit()`. Lives outside the page so it survives navigation. |
+| `src/lib/case.ts` | `caseText`: joins the case so far and a follow-up into the text sent for analysis. Has tests. |
+| `src/lib/workspace.svelte.ts` | Analysis state (the case's `turns`, the draft, result, stage, quota) and the streaming `submit()`, including restoring the previous result when a follow-up fails. Lives outside the page so it survives navigation. |
 | `src/lib/auth.svelte.ts` | Firebase sign-in state and actions (`init`, `signIn`, `signOut`, `headers`, `openDialog`). Browser-only. |
 | `src/routes/privacy`, `terms`, `samples`, `learn/*` | Privacy and terms, the sample cases, and the Learn pages (how it works, issue-spotting guide, glossary), all on `ContentPage.svelte`. |
 | `src/routes/design-system` | Development-only token and primitive reference. Returns 404 in production. |
@@ -94,7 +95,7 @@ There is no user table and nothing user-written is persisted. The only stored da
 ### Request flow (`/api/spot`)
 
 0. A bearer token that fails verification returns **401** `auth_invalid`. It never falls back to the anonymous quota.
-1. Invalid JSON, facts under 20 trimmed characters, or over 12,000 raw characters return **400**. A missing `OPENAI_API_KEY` returns **500**. A missing D1 binding returns **503**.
+1. The facts field carries the whole case: the client joins the first message and every follow-up (later ones prefixed `Further facts:`, see `src/lib/case.ts`), so the 12,000-character limit applies to the case, not to one message. The server does not know or care that it is a follow-up; each one is a normal search and counts against the quota. Invalid JSON, facts under 20 trimmed characters, or over 12,000 raw characters return **400**. A missing `OPENAI_API_KEY` returns **500**. A missing D1 binding returns **503**.
 2. **Quota.** `reserve` takes one search from the visitor's counter and the IP counter. Neither has room: **429** with `code: "quota_exceeded"` and the quota.
 3. A stream starts (`application/x-ndjson`). Events (`SpotEvent` in `src/lib/spotter.ts`):
    `{quota}`, `{stage: "verifying"}`, `{stage: "analyzing"}`, `{item: {section, value}}`, `{sectionDone}`, `{meta: {model, ms}}`, `{result}`, `{notLegal: true}`, `{error}`.

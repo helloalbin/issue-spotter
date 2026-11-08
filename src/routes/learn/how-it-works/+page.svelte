@@ -36,7 +36,15 @@
 		</li>
 	</ul>
 
-	<h2>4. What to keep in mind</h2>
+	<h2>4. Adding more facts</h2>
+	<p>
+		The box under the analysis is for more facts about the same case: what you remembered, or what
+		happened next. {SITE_NAME} puts them together with everything you have already given and reads
+		the whole case again, so the new analysis replaces the old one and covers all of it. Each added
+		message counts as one search. To start a different case, use New analysis.
+	</p>
+
+	<h2>5. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case
@@ -51,14 +59,14 @@
 		</li>
 	</ul>
 
-	<h2>5. Daily searches</h2>
+	<h2>6. Daily searches</h2>
 	<p>
 		Each analysis counts as one search. Visitors who are not signed in get a small number a day;
 		signing in with Google raises it. If a search fails on our side, it is given back. The counter
 		resets once a day and the page shows the time in your own time zone.
 	</p>
 
-	<h2>6. Your data</h2>
+	<h2>7. Your data</h2>
 	<p>
 		We do not store your case facts. They are sent to an AI model provider to produce the analysis.
 		See the <a href="/privacy">privacy policy</a> for the details, and avoid entering confidential

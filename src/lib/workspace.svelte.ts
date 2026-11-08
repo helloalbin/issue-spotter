@@ -170,6 +170,8 @@ class Workspace {
 	/** The comparison itself is running. */
 	comparing = $state(false);
 	compareStage = $state<'opening' | 'treatment' | 'reading' | 'writing' | null>(null);
+	/** The plan of whoever is acting; everyone is on the free plan until tiers exist. */
+	tier = $state<'free' | 'investigative' | 'researcher'>('free');
 	/** Whether the next message is citations to check. */
 	verifyMode = $state(false);
 	verifying = $state(false);
@@ -233,6 +235,7 @@ class Workspace {
 			if (response.ok) {
 				const payload = await response.json();
 				this.liveQuota = payload.quota;
+				if (payload.tier) this.tier = payload.tier;
 				this.researchQuota = payload.research ?? null;
 				this.compareQuota = payload.compare ?? null;
 				this.verifyQuota = payload.verify ?? null;

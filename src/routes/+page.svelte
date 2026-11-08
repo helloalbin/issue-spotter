@@ -72,7 +72,7 @@
 
 <main id="main" class="flex-1 overflow-y-auto">
 	{#if workspace.isLoading}
-		<Progress stage={workspace.stage} />
+		<Progress stage={workspace.stage} streamed={workspace.streamed} closed={workspace.closed} />
 	{:else if workspace.result}
 		<AnalysisResult
 			facts={workspace.submittedFacts}

@@ -50,6 +50,11 @@
 
 	--focus: #d1d5db;
 
+	/* Account avatar: the same dark gradient in both themes, so its initial stays legible. */
+	--avatar-from: #3a3e45;
+	--avatar-to: #20232a;
+	--avatar-fg: #f5f6f7;
+
 	/* Google's mark has fixed brand colors in both themes. */
 	--brand-google-blue: #4285f4;
 	--brand-google-green: #34a853;
@@ -143,6 +148,10 @@
 	--color-success-text: var(--success-text);
 
 	--color-focus: var(--focus);
+
+	--color-avatar-from: var(--avatar-from);
+	--color-avatar-to: var(--avatar-to);
+	--color-avatar-fg: var(--avatar-fg);
 
 	--color-brand-google-blue: var(--brand-google-blue);
 	--color-brand-google-green: var(--brand-google-green);
@@ -266,6 +275,21 @@
 	animation: spin 1s linear infinite;
 	@media (prefers-reduced-motion: reduce) {
 		animation: none;
+	}
+}
+
+/* New streamed entries ease in. */
+@utility enter {
+	animation: enter 180ms ease-out;
+	@media (prefers-reduced-motion: reduce) {
+		animation: none;
+	}
+}
+
+@keyframes enter {
+	from {
+		opacity: 0;
+		transform: translateY(2px);
 	}
 }
 

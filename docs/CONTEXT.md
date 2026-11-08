@@ -35,7 +35,7 @@ Jurisdiction: the system prompt tells the model to infer the jurisdiction from t
 - **Tailwind CSS 4** via `@tailwindcss/vite`. The only stylesheet is `src/routes/layout.css`, which holds the design tokens (see [`UI_CONTEXT.md`](UI_CONTEXT.md)). Inter and JetBrains Mono are self-hosted through `@fontsource-variable`. Icons come from `@lucide/svelte`.
 - **TypeScript 6**, `strict: true`. **Vite 8**.
 - An OpenAI-compatible Chat Completions API is the model provider.
-- No test runner, linter or formatter is configured.
+- Tests use Node's built-in runner (`npm test`, files `*.test.ts` under `src/lib/server`). No linter or formatter is configured.
 - Node 24 and npm 11 were used. `.npmrc` sets `engine-strict=true`.
 - There is no `svelte.config.js`. SvelteKit 3 config (adapter, compiler options) lives in the `sveltekit({...})` call in `vite.config.ts`.
 
@@ -78,6 +78,7 @@ There is no user table and nothing user-written is persisted. The only stored da
 | `src/lib/firebase.ts` | Browser-only Firebase Auth setup. Loaded with a dynamic import, only when Firebase is configured. |
 | `src/routes/api/me/+server.ts` | `GET /api/me`: the current user (or null) and their remaining searches. |
 | `src/lib/spotter.ts` | Shared (client and server): constants, result and event types, the legal-vocabulary heuristic. |
+| `src/lib/server/section-stream.ts` | `SectionParser`: reads the streamed JSON reply and reports each finished entry and section. Has tests. |
 | `src/lib/server/quota.ts` | D1 quota functions: `reserve`, `release`, `peek`. |
 | `src/env.ts` | Declares env vars and defaults with `defineEnvVars`. |
 | `src/cloudflare.d.ts` | Types the `cloudflare:workers` module (`env.DB`). |
@@ -93,11 +94,12 @@ There is no user table and nothing user-written is persisted. The only stored da
 1. Invalid JSON, facts under 20 trimmed characters, or over 12,000 raw characters return **400**. A missing `OPENAI_API_KEY` returns **500**. A missing D1 binding returns **503**.
 2. **Quota.** `reserve` takes one search from the visitor's counter and the IP counter. Neither has room: **429** with `code: "quota_exceeded"` and the quota.
 3. A stream starts (`application/x-ndjson`). Events (`SpotEvent` in `src/lib/spotter.ts`):
-   `{quota}`, `{stage: "verifying"}`, `{stage: "analyzing"}`, `{result}`, `{notLegal: true}`, `{error}`.
+   `{quota}`, `{stage: "verifying"}`, `{stage: "analyzing"}`, `{item: {section, value}}`, `{sectionDone}`, `{result}`, `{notLegal: true}`, `{error}`.
 4. **Verification.** `looksLegal` (see below) true: skip the classifier. Otherwise `stage: verifying`, then a classifier call. "no" means `notLegal`.
-5. **Analysis.** `stage: analyzing`, then the full call, normalized into `SpotterResult`.
+5. **Analysis (streamed).** `stage: analyzing`, then the call runs with `stream: true`. `SectionParser` (`src/lib/server/section-stream.ts`) reads the model's JSON as it arrives and the server sends an `item` as each entry completes (normalized and capped at 8 per section, 6 acts) and a `sectionDone` as each array closes. The key order in the system prompt (issues, doctrines, precedents, acts) is the order the UI fills in. When the reply ends, the whole text is parsed and normalized into `SpotterResult` and sent as `result`, which is the source of truth. A provider that ignores `stream` and answers in one JSON body still works: the items arrive together.
 6. **Refunds.** A provider error refunds the search. A `notLegal` rejection is free up to `QUOTA_REJECTION_MULTIPLIER` times the daily limits, then it counts.
 7. Mid-stream failures arrive as an `{error}` event, not a status code.
+8. **Cancel.** If the client aborts (the Stop button), the stream's `cancel()` aborts the upstream provider request, so generation and cost stop. The search is **not** refunded, because the provider already did part of the work. The server logs `{"event":"search_cancelled"}`.
 
 The classifier **fails open**: if it errors or answers unclearly, the analysis proceeds. Blocking a valid case is worse than one extra call.
 
@@ -123,7 +125,7 @@ A vocabulary of about 100 legal terms (prefix or whole-word matches, English). T
 
 ### Token usage
 
-Every model call logs one structured line: `{"event":"llm_usage","call":"classifier|analysis","model":...,"promptTokens":...,"completionTokens":...}`. Counts are `null` when the provider omits them. This is the metering foundation for credits.
+Every model call logs one structured line: `{"event":"llm_usage","call":"classifier|analysis","model":...,"promptTokens":...,"completionTokens":...}`. Streaming calls send `stream_options.include_usage`, so the counts come from the final chunk. Counts are `null` when the provider omits them, and a cancelled call logs none. This is the metering foundation for credits.
 
 ### Normalization (deliberately forgiving)
 
@@ -171,6 +173,7 @@ npm run dev              # vite dev, reads .env
 npm run db:migrate:local # apply migrations to the local D1 database (once per fresh clone)
 npm run check            # svelte-kit sync + svelte-check
 npm run check:tokens     # fail on raw colors outside the design tokens
+npm test                 # node:test unit tests (the streaming parser)
 npm run build            # builds with adapter-cloudflare
 npm run preview:worker   # build, then run in the Workers runtime (workerd), reads .dev.vars
 ```
@@ -221,7 +224,7 @@ Open decisions before deploy: canonical host (bare domain, with `www` redirected
 ## Known issues and open work
 
 1. **Hallucinated citations.** Precedents and sections are model output with no verification. A sample landlord/tenant run returned criminal and constitutional cases. The prompt has no confidence flags. This matters most for a legal study tool.
-2. **No tests.** `quota.ts`, `looksLegal` and the normalizers are pure or small and are the first candidates. The quota was verified only through ad hoc scripts against local D1.
+2. **Little test coverage.** Only `SectionParser` has tests. `quota.ts`, `looksLegal` and the normalizers are pure or small and are the next candidates. The quota was verified only through ad hoc scripts against local D1.
 3. **Nothing deployed.** No Cloudflare account, real D1 database, `QUOTA_SALT` secret or provider spend cap yet.
 3a. **Firebase launch checklist.** (a) The Google sign-in support email is a personal Gmail and can be shown to users: switch it to a Google Group before public launch. (b) Restrict the browser API key to the app's domains in the Google Cloud console (allow `legalspotter.com`, `www.legalspotter.com`, `localhost` and the `<project>.firebaseapp.com` handler, or sign-in breaks). (c) Add the `*.workers.dev` address to Authorized domains when first deploying. (d) The privacy and terms pages exist, so the consent screen can link to them. The consent screen shows the `firebaseapp.com` address, not `legalspotter.com`; a custom auth domain and OAuth consent screen would change that (optional).
 3b. **Signed-in limit is a placeholder** (20 a day) and anyone with a Google account can sign in, so it is a soft limit only. Credits replace it.

@@ -51,7 +51,8 @@ Pages: `/` (the analysis), `/samples`, `/learn/how-it-works`, `/learn/guide`, `/
 ## States
 
 - **Empty.** Heading "What are the facts?", a short description, the composer, and sample chips (Landlord & tenant, Negligence, Contract breach). Messages sit under the composer. A footer holds the disclaimer and Privacy and Terms links.
-- **Loading.** `Progress`: a two-step timeline, "Reading the facts" (with a "checking legal context" note while the classifier runs) and "Spotting issues, doctrines, precedents and acts". The composer is docked, read-only and shows "Context locked". The step list reflects only the two stages the server really streams.
+- **Loading.** `Progress`, from the design's streaming frames (dark `EERdl`, light `DVL0X`): a "Spotting issues" head with a spinner, then a vertical tree of five steps joined by a rail. "Reading the facts" is first (note "checking legal context" while the classifier runs, then "done"). Then Identifying primary legal issues, Matching governing doctrines, Finding landmark precedents and Locating applicable acts & sections. Each step is done (check marker), active (spinner marker) or pending (empty marker, dimmed). Entries appear under a step as the server streams them, with a "3 found" count, and ease in (reduced motion turns that off). The first section the model has not finished is the active one. The tree is `aria-hidden`; a visually hidden live region announces only the active step and its count, so a screen reader is not read every entry.
+  The composer is docked and locked: the facts show as two lines with **Show more / Show less** when there is more, "Context locked" on the left and **Stop** on the right. Stop cancels the request and the provider stops generating, so it saves cost, but the search still counts. The page returns to the empty state with the text kept and a notice.
 - **Result.** `AnalysisResult`: the submitted facts with Copy and Edit, an "Issue analysis" heading with a one-line summary (correctly pluralized), then Primary legal issues (numbered), Relevant doctrines and Landmark precedents (two columns), and Applicable acts & sections (cards with monospace section chips). A footer row holds Copy as Markdown and a verify-before-citing note. The composer is empty and docked. Submitting from it starts a new analysis; it is not a follow-up.
 - **Error or not-legal.** Returns to the empty state with the user's text kept and the message shown (`role="alert"` for errors, a polite status region for the not-legal notice).
 - **Out of searches.** A neutral notice with the reset time. Anonymous visitors also get an inline Sign in link.
@@ -66,7 +67,7 @@ Pages: `/` (the analysis), `/samples`, `/learn/how-it-works`, `/learn/guide`, `/
 
 ## Sign-in
 
-The sidebar shows "Sign In for Free" only when all four `FIREBASE_*` values are set. It opens the dialog, which offers Continue with Google and links to Terms and Privacy. The dialog closes when sign-in succeeds. Closing the popup is not an error. A signed-in user sees an avatar initial, the name and email, and a sign-out button. Requests carry `Authorization: Bearer <ID token>` when signed in.
+The sidebar shows "Sign In for Free" only when all four `FIREBASE_*` values are set. It opens the dialog, which offers Continue with Google and links to Terms and Privacy. The dialog closes when sign-in succeeds. Closing the popup is not an error. A signed-in user sees an account block in the sidebar (gradient avatar, name, email, and an up-down chevron that opens a menu with Sign out) and a matching avatar beside the theme toggle in the top bar. The avatar gradient uses the `avatar-from`, `avatar-to` and `avatar-fg` tokens. Requests carry `Authorization: Bearer <ID token>` when signed in.
 
 ## Accessibility
 

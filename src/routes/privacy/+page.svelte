@@ -1,9 +1,9 @@
 <script lang="ts">
-	import LegalDocument from '#lib/components/LegalDocument.svelte';
-	import { CONTACT_EMAIL, SITE_NAME } from '#lib/site.js';
+	import ContentPage from '#lib/components/ContentPage.svelte';
+	import { CONTACT_EMAIL, LEGAL_UPDATED, SITE_NAME } from '#lib/site.js';
 </script>
 
-<LegalDocument title="Privacy Policy">
+<ContentPage title="Privacy Policy" updated={LEGAL_UPDATED}>
 	<p>
 		{SITE_NAME} is a study aid for law students and junior advocates. This page explains what we
 		collect when you use it, why, and who else handles it. We have tried to keep it short and
@@ -94,4 +94,4 @@
 		If we change what we collect or who handles it, we will update this page and its date. For
 		changes that matter, we will say so on the site.
 	</p>
-</LegalDocument>
+</ContentPage>

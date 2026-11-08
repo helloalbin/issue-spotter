@@ -1,9 +1,9 @@
 <script lang="ts">
-	import LegalDocument from '#lib/components/LegalDocument.svelte';
-	import { CONTACT_EMAIL, SITE_NAME } from '#lib/site.js';
+	import ContentPage from '#lib/components/ContentPage.svelte';
+	import { CONTACT_EMAIL, LEGAL_UPDATED, SITE_NAME } from '#lib/site.js';
 </script>
 
-<LegalDocument title="Terms of Use">
+<ContentPage title="Terms of Use" updated={LEGAL_UPDATED}>
 	<p>
 		By using {SITE_NAME} you agree to these terms. If you do not agree, please do not use the
 		service.
@@ -67,4 +67,4 @@
 
 	<h2>Contact</h2>
 	<p>Questions about these terms: <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a>.</p>
-</LegalDocument>
+</ContentPage>

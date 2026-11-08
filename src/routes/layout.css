@@ -58,6 +58,8 @@
 
 	/* On dark, structure comes from borders and surface steps; shadows barely read. */
 	--elevation: none;
+	--elevation-button: none;
+	--elevation-overlay: 0 10px 28px #00000070;
 }
 
 :root[data-theme='light'] {
@@ -99,6 +101,8 @@
 
 	/* On light, surfaces lift with soft layered shadows. */
 	--elevation: 0 1px 2px #0000000f, 0 6px 16px #00000014;
+	--elevation-button: 0 1px 2px #0000001a, 0 5px 14px #0000001f;
+	--elevation-overlay: 0 10px 28px #00000070;
 }
 
 @theme inline {
@@ -186,6 +190,8 @@
 
 	--shadow-*: initial;
 	--shadow-raised: var(--elevation);
+	--shadow-button: var(--elevation-button);
+	--shadow-overlay: var(--elevation-overlay);
 }
 
 @layer base {

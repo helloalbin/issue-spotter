@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Button from '#lib/components/Button.svelte';
 	import Chip from '#lib/components/Chip.svelte';
-	import ThemeToggle from '#lib/components/ThemeToggle.svelte';
 
 	const colors = {
 		Surfaces: ['bg', 'surface-1', 'surface-2', 'surface-3'],
@@ -47,17 +46,17 @@
 	<title>Design system</title>
 </svelte:head>
 
-<main class="mx-auto max-w-5xl space-y-12 px-6 py-12">
+<main id="main" class="flex-1 overflow-y-auto">
+<div class="mx-auto max-w-5xl space-y-12 px-6 py-12">
 	<header class="flex items-start justify-between gap-6">
 		<div>
 			<p class="type-meta text-text-tertiary">DESIGN SYSTEM</p>
 			<h1 class="type-h1 mt-2">Tokens and primitives</h1>
 			<p class="type-body mt-2 max-w-xl text-text-secondary">
-				Development reference. Every value here comes from a token in layout.css; switch the theme to
-				check both.
+				Development reference. Every value here comes from a token in layout.css; use the theme
+				toggle to check both.
 			</p>
 		</div>
-		<ThemeToggle />
 	</header>
 
 	<section class="space-y-6">
@@ -146,4 +145,5 @@
 			<Chip mono>Section 73</Chip>
 		</div>
 	</section>
+</div>
 </main>

@@ -4,6 +4,12 @@ import type { QuotaInfo } from '#lib/spotter.js';
 export type Visitor = { anonId: string; ipHash: string };
 export type QuotaLimits = { anon: number; ip: number };
 
+/**
+ * Who a quota is counted for. `id` is an anonymous cookie id or a Firebase uid, and `ns` keeps
+ * the two apart. `limits.anon` applies to `id` and `limits.ip` to the hashed IP.
+ */
+export type Subject = { ns: string; id: string; ipHash: string; limits: QuotaLimits };
+
 export type Reservation =
 	| { ok: true; remaining: number; day: string }
 	| { ok: false; scope: 'anon' | 'ip' };
@@ -26,23 +32,36 @@ export function nextReset(now = Date.now()): number {
 	return (Math.floor(now / DAY_MS) + 1) * DAY_MS;
 }
 
-function keysFor(ns: string, visitor: Visitor) {
-	return { anon: `${ns}:a:${visitor.anonId}`, ip: `${ns}:i:${visitor.ipHash}` };
+function keysFor(subject: Subject) {
+	return {
+		anon: `${subject.ns}:a:${subject.id}`,
+		ip: `${subject.ns}:i:${subject.ipHash}`
+	};
 }
 
-export function quotaInfo(limit: number, remaining: number): QuotaInfo {
-	return { limit, remaining: Math.max(remaining, 0), resetsAt: nextReset() };
+export function quotaInfo(subject: Subject, remaining: number): QuotaInfo {
+	return {
+		signedIn: subject.ns !== 'search',
+		limit: subject.limits.anon,
+		remaining: Math.max(remaining, 0),
+		resetsAt: nextReset()
+	};
+}
+
+/** The counter for free non-legal rejections: a separate namespace with scaled-up limits. */
+export function rejectionSubject(subject: Subject, multiplier: number): Subject {
+	return {
+		...subject,
+		ns: `reject:${subject.ns}`,
+		limits: { anon: subject.limits.anon * multiplier, ip: subject.limits.ip * multiplier }
+	};
 }
 
 /** Takes one unit from both the per-browser and the per-IP counter, or neither. */
-export async function reserve(
-	db: D1Database,
-	ns: string,
-	visitor: Visitor,
-	limits: QuotaLimits
-): Promise<Reservation> {
+export async function reserve(db: D1Database, subject: Subject): Promise<Reservation> {
+	const { limits } = subject;
 	const day = currentDay();
-	const keys = keysFor(ns, visitor);
+	const keys = keysFor(subject);
 	const [anon, ip] = await db.batch<{ count: number }>([
 		db.prepare(RESERVE).bind(keys.anon, day, limits.anon),
 		db.prepare(RESERVE).bind(keys.ip, day, limits.ip)
@@ -64,13 +83,8 @@ export async function reserve(
 }
 
 /** Returns a unit taken by `reserve`, on the day it was taken. */
-export async function release(
-	db: D1Database,
-	ns: string,
-	visitor: Visitor,
-	day: string
-): Promise<void> {
-	const keys = keysFor(ns, visitor);
+export async function release(db: D1Database, subject: Subject, day: string): Promise<void> {
+	const keys = keysFor(subject);
 	await db.batch([
 		db.prepare(RELEASE).bind(keys.anon, day),
 		db.prepare(RELEASE).bind(keys.ip, day)
@@ -78,14 +92,10 @@ export async function release(
 }
 
 /** Remaining units without taking any. */
-export async function peek(
-	db: D1Database,
-	ns: string,
-	visitor: Visitor,
-	limits: QuotaLimits
-): Promise<number> {
+export async function peek(db: D1Database, subject: Subject): Promise<number> {
+	const { limits } = subject;
 	const day = currentDay();
-	const keys = keysFor(ns, visitor);
+	const keys = keysFor(subject);
 	const [anon, ip] = await db.batch<{ count: number }>([
 		db.prepare(PEEK).bind(keys.anon, day),
 		db.prepare(PEEK).bind(keys.ip, day)

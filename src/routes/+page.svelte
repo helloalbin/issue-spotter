@@ -1,10 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import {
+		FIREBASE_API_KEY,
+		FIREBASE_APP_ID,
+		FIREBASE_AUTH_DOMAIN,
+		FIREBASE_AUTH_EMULATOR_URL,
+		FIREBASE_PROJECT_ID
+	} from '$app/env/public';
+	import type { Auth } from 'firebase/auth';
 	import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 	import type { QuotaInfo, SpotEvent, SpotterResult } from '#lib/spotter.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	const authConfigured = Boolean(
+		FIREBASE_API_KEY && FIREBASE_AUTH_DOMAIN && FIREBASE_PROJECT_ID && FIREBASE_APP_ID
+	);
+	// The emulator is a development tool and is never used in a production build.
+	const emulatorUrl = import.meta.env.PROD ? undefined : FIREBASE_AUTH_EMULATOR_URL;
 
 	const SAMPLE_FACTS =
 		'A tenant slipped on a wet staircase in a rented apartment building after repeated written complaints to the landlord about the leak. The tenant suffered a fractured ankle and missed two months of work.';
@@ -17,7 +31,30 @@
 	let liveQuota = $state<QuotaInfo | null>(null);
 	let quota = $derived(liveQuota ?? data.quota);
 	let mounted = $state(false);
-	onMount(() => (mounted = true));
+	let user = $state<{ name: string | null; email: string | null } | null>(null);
+	let authReady = $state(false);
+	let signingIn = $state(false);
+	let firebase: typeof import('#lib/firebase.js') | null = null;
+	let auth: Auth | null = null;
+
+	onMount(async () => {
+		mounted = true;
+		if (!authConfigured) return;
+
+		firebase = await import('#lib/firebase.js');
+		auth = firebase.getFirebaseAuth({
+			apiKey: FIREBASE_API_KEY!,
+			authDomain: FIREBASE_AUTH_DOMAIN!,
+			projectId: FIREBASE_PROJECT_ID!,
+			appId: FIREBASE_APP_ID!,
+			emulatorUrl
+		});
+		authReady = true;
+		firebase.onAuthStateChanged(auth, (current) => {
+			user = current ? { name: current.displayName, email: current.email } : null;
+			refreshQuota();
+		});
+	});
 	let stage = $state<'verifying' | 'analyzing' | null>(null);
 	let result = $state<SpotterResult | null>(null);
 
@@ -43,6 +80,42 @@
 			? `${result.issues.length} issues · ${result.doctrines.length} doctrines · ${result.precedents.length} precedents · ${result.acts.length} acts`
 			: ''
 	);
+
+	/** The Firebase ID token (refreshed by the SDK when needed) as a request header, if signed in. */
+	async function authHeaders(): Promise<Record<string, string>> {
+		const token = await auth?.currentUser?.getIdToken();
+		return token ? { authorization: `Bearer ${token}` } : {};
+	}
+
+	/** Re-reads the remaining searches for whoever is signed in (or the anonymous visitor). */
+	async function refreshQuota() {
+		try {
+			const response = await fetch('/api/me', { headers: await authHeaders() });
+			if (response.ok) liveQuota = (await response.json()).quota;
+		} catch {
+			// The counter keeps its last value.
+		}
+	}
+
+	async function signIn() {
+		if (!firebase || !auth) return;
+		errorMessage = '';
+		signingIn = true;
+		try {
+			await firebase.signInWithPopup(auth, new firebase.GoogleAuthProvider());
+		} catch (error) {
+			const code = (error as { code?: string }).code;
+			if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+				errorMessage = 'Sign-in failed. Please try again.';
+			}
+		} finally {
+			signingIn = false;
+		}
+	}
+
+	async function signOutUser() {
+		if (firebase && auth) await firebase.signOut(auth);
+	}
 
 	function fillSample() {
 		facts = SAMPLE_FACTS;
@@ -97,7 +170,8 @@
 			const response = await fetch('/api/spot', {
 				method: 'POST',
 				headers: {
-					'content-type': 'application/json'
+					'content-type': 'application/json',
+					...(await authHeaders())
 				},
 				body: JSON.stringify({ facts })
 			});
@@ -106,6 +180,9 @@
 				const payload = await response.json().catch(() => null);
 				if (payload?.code === 'quota_exceeded') {
 					liveQuota = payload.quota;
+				} else if (payload?.code === 'auth_invalid') {
+					errorMessage = payload.error;
+					await signOutUser();
 				} else {
 					errorMessage = payload?.error ?? 'Unable to analyze the case summary right now.';
 				}
@@ -157,9 +234,36 @@
 	<div class="mx-auto max-w-6xl">
 		<header class="overflow-hidden rounded-xl bg-stone-900 text-stone-50 shadow-md">
 			<div class="px-6 py-8 sm:px-10">
-				<p class="inline-block rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-300">
-					For law students &middot; learning aid, not legal advice
-				</p>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<p
+						class="inline-block rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-300"
+					>
+						For law students &middot; learning aid, not legal advice
+					</p>
+					{#if authConfigured}
+						<div class="flex items-center gap-3 text-xs text-stone-300">
+							{#if user}
+								<span>{user.name ?? user.email}</span>
+								<button
+									type="button"
+									onclick={signOutUser}
+									class="rounded-lg border border-stone-600 px-3 py-1.5 transition hover:bg-stone-800"
+								>
+									Sign out
+								</button>
+							{:else}
+								<button
+									type="button"
+									onclick={signIn}
+									disabled={!authReady || signingIn}
+									class="rounded-lg border border-stone-600 px-3 py-1.5 transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{signingIn ? 'Signing in…' : 'Sign in with Google'}
+								</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
 				<h1 class="mt-3 text-3xl font-semibold tracking-tight">Case Law Issue Spotter</h1>
 				<p class="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
 					Paste a raw case summary. The assistant identifies likely legal issues, governing
@@ -216,7 +320,8 @@
 					</button>
 					{#if quota}
 						<span class="ml-auto text-xs tabular-nums text-stone-500">
-							{quota.remaining} of {quota.limit} free searches left today
+							{quota.remaining} of {quota.limit}
+							{quota.signedIn ? '' : 'free '}searches left today
 						</span>
 					{/if}
 				</div>
@@ -233,8 +338,16 @@
 
 			{#if outOfSearches}
 				<p class="mt-4 rounded-lg border border-stone-300 bg-stone-100 p-3 text-sm text-stone-700">
-					You have used today's {quota?.limit} free searches. They reset at {resetTime}. Your text is
-					kept, and more access is coming soon.
+					{#if quota?.signedIn}
+						You have used today's {quota.limit} searches. They reset at {resetTime}. Your text is
+						kept, and credits are coming soon.
+					{:else if authConfigured}
+						You have used today's {quota?.limit} free searches. They reset at {resetTime}. Sign in
+						with Google for more. Your text is kept.
+					{:else}
+						You have used today's {quota?.limit} free searches. They reset at {resetTime}. Your text
+						is kept, and more access is coming soon.
+					{/if}
 				</p>
 			{/if}
 

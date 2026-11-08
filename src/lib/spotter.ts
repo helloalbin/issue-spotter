@@ -15,6 +15,7 @@ export type SpotterResult = {
 };
 
 export type QuotaInfo = {
+	signedIn: boolean;
 	limit: number;
 	remaining: number;
 	/** Epoch milliseconds when the daily quota resets. */

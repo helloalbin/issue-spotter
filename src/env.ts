@@ -22,6 +22,39 @@ export const variables = defineEnvVars({
 		description: 'Searches per day for each IP across all anonymous browsers (shared networks).',
 		schema: (value) => positiveInt(value, 25)
 	},
+	SIGNED_IN_DAILY_LIMIT: {
+		description: 'Searches per day for each signed-in account, until credits replace it.',
+		schema: (value) => positiveInt(value, 20)
+	},
+	SIGNED_IN_IP_DAILY_LIMIT: {
+		description: 'Searches per day per IP across all signed-in accounts.',
+		schema: (value) => positiveInt(value, 200)
+	},
+	FIREBASE_API_KEY: {
+		public: true,
+		description: 'Firebase web API key. A public identifier, not a secret.',
+		schema: (value) => value || undefined
+	},
+	FIREBASE_AUTH_DOMAIN: {
+		public: true,
+		description: 'Firebase auth domain, e.g. your-project.firebaseapp.com.',
+		schema: (value) => value || undefined
+	},
+	FIREBASE_PROJECT_ID: {
+		public: true,
+		description: 'Firebase project id. The server checks it as the ID token audience.',
+		schema: (value) => value || undefined
+	},
+	FIREBASE_APP_ID: {
+		public: true,
+		description: 'Firebase web app id.',
+		schema: (value) => value || undefined
+	},
+	FIREBASE_AUTH_EMULATOR_URL: {
+		public: true,
+		description: 'Local Firebase Auth emulator URL. Development only; ignored in production builds.',
+		schema: (value) => value || undefined
+	},
 	QUOTA_REJECTION_MULTIPLIER: {
 		description: 'Non-legal rejections are free up to this multiple of the daily limits.',
 		schema: (value) => positiveInt(value, 3)

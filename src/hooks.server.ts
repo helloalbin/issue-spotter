@@ -1,10 +1,28 @@
 import { error } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit/hooks';
+import { createRemoteJWKSet } from 'jose';
 import { QUOTA_SALT } from '$app/env/private';
+import { FIREBASE_AUTH_EMULATOR_URL, FIREBASE_PROJECT_ID } from '$app/env/public';
+import {
+	FIREBASE_JWKS_URL,
+	verifyEmulatorToken,
+	verifyFirebaseToken
+} from '#lib/server/firebase-auth.js';
 
 const ANON_COOKIE = 'anon_id';
 const ONE_YEAR = 60 * 60 * 24 * 365;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+const firebaseKeys = createRemoteJWKSet(new URL(FIREBASE_JWKS_URL));
+
+async function authenticate(token: string) {
+	if (!FIREBASE_PROJECT_ID) throw new Error('Firebase is not configured.');
+	// The emulator's unsigned tokens are only ever accepted outside production builds.
+	if (!import.meta.env.PROD && FIREBASE_AUTH_EMULATOR_URL) {
+		return verifyEmulatorToken(token, FIREBASE_PROJECT_ID);
+	}
+	return verifyFirebaseToken(token, FIREBASE_PROJECT_ID, firebaseKeys);
+}
 
 function quotaSalt(): string {
 	if (QUOTA_SALT) return QUOTA_SALT;
@@ -41,6 +59,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	event.locals.visitor = { anonId, ipHash: await hashIp(event.getClientAddress()) };
+
+	event.locals.user = null;
+	event.locals.authFailed = false;
+	const authorization = event.request.headers.get('authorization');
+	if (authorization?.startsWith('Bearer ')) {
+		try {
+			event.locals.user = await authenticate(authorization.slice('Bearer '.length));
+		} catch {
+			event.locals.authFailed = true;
+		}
+	}
 
 	return resolve(event);
 };

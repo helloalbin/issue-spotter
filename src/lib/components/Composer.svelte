@@ -57,7 +57,7 @@
 		placeholder={docked
 			? 'Paste new facts to start another analysis…'
 			: 'Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord about a broken light and a leaking pipe…'}
-		class="w-full resize-none bg-transparent text-md leading-normal text-text-primary outline-none"
+		class="w-full resize-none bg-transparent text-md leading-normal text-text-primary outline-none {docked ? '' : 'min-h-33'}"
 	></textarea>
 
 	<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

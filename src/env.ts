@@ -92,6 +92,14 @@ export const variables = defineEnvVars({
 		description: 'Pages one IP address may add per day, across visitors.',
 		schema: (value) => positiveInt(value, 100)
 	},
+	FILE_READ_DAILY_LIMIT: {
+		description: 'Files one visitor or account may upload to be read per day. Unreadable or unrelated files are refunded.',
+		schema: (value) => positiveInt(value, 10)
+	},
+	FILE_READ_IP_DAILY_LIMIT: {
+		description: 'Files one IP address may upload to be read per day, across visitors.',
+		schema: (value) => positiveInt(value, 50)
+	},
 	SOURCE_VERIFICATION: {
 		description:
 			'Verify cited references against real pages with a web search after the analysis: off, signed-in (signed-in users only) or all. Each verification costs about a cent.',

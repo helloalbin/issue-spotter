@@ -14,8 +14,15 @@
 	let view = $state<View>('daily');
 
 	let map = $derived(heatmap(activity, now));
-	let bars = $derived(weekly(activity, now, 26));
-	let shown = $derived(view === 'cumulative' ? bars.map((bar) => ({ ...bar, value: bar.total })) : bars.map((bar) => ({ ...bar, value: bar.count })));
+	let year = $derived(weekly(activity, now));
+	/** Each week's bar for the view on show: runs that week, or the running total, with the words for its tooltip. */
+	let shown = $derived(
+		year.bars.map((bar) =>
+			view === 'cumulative'
+				? { title: bar.through, value: bar.total, row: bar.label }
+				: { title: bar.label, value: bar.count, row: bar.label }
+		)
+	);
 	let tallest = $derived(Math.max(1, ...shown.map((bar) => bar.value)));
 	/** Days with activity, for people who cannot see colour. */
 	let activeDays = $derived(map.columns.flat().filter((cell) => cell.count > 0));
@@ -30,6 +37,10 @@
 
 	let card = $state<HTMLDivElement>();
 	let tip = $state<{ x: number; y: number; title: string; value: string } | null>(null);
+	let tipWidth = $state(0);
+	let cardWidth = $state(0);
+	/** The tooltip centred over what is pointed at, but kept inside the card whatever its wording. */
+	let tipLeft = $derived(tip ? Math.max(tipWidth / 2, Math.min(cardWidth - tipWidth / 2, tip.x)) : 0);
 
 	/** Shows the tooltip above whatever the pointer is on, inside the card. */
 	function show(event: Event, title: string, value: string) {
@@ -57,15 +68,13 @@
 		</div>
 	</div>
 
-	<div bind:this={card} class="relative rounded-lg border border-border-subtle bg-surface-1 p-4" onmouseleave={() => (tip = null)} role="presentation">
+	<div bind:this={card} bind:clientWidth={cardWidth} class="relative rounded-lg border border-border-subtle bg-surface-1 p-4" onmouseleave={() => (tip = null)} role="presentation">
 		{#if view === 'daily'}
 			<div class="overflow-x-auto">
 				<div class="flex min-w-[640px] flex-col gap-2.5" role="img" aria-label="{plural(map.total)} in the last 12 months, on {activeDays.length} {activeDays.length === 1 ? 'day' : 'days'}">
-					<div class="grid px-0.5" style="grid-template-columns: repeat(53, minmax(0, 1fr))" aria-hidden="true">
-						{#each map.months as month, at}
-							{#if (map.months[at + 1]?.column ?? 99) - month.column >= 3}
-								<span class="text-[10px] leading-none whitespace-nowrap text-text-muted" style="grid-column: {month.column + 1}">{month.label}</span>
-							{/if}
+					<div class="grid px-0.5" style="grid-template-columns: repeat({map.columns.length}, minmax(0, 1fr))" aria-hidden="true">
+						{#each map.months as month}
+							<span class="text-[10px] leading-none whitespace-nowrap text-text-muted" style="grid-column: {month.column + 1}">{month.label}</span>
 						{/each}
 					</div>
 					<div class="grid gap-[3px]" style="grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr)" aria-hidden="true">
@@ -94,23 +103,36 @@
 				</tbody>
 			</table>
 		{:else}
-			<div class="flex h-32 items-end gap-[3px]" aria-hidden="true">
-				{#each shown as bar}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="flex-1 rounded-[2px] {bar.value > 0 ? (bar.value === tallest ? 'bg-text-primary' : 'bg-heat-3') : 'bg-heat-0'}"
-						style="height: {bar.value > 0 ? Math.max(4, (bar.value / tallest) * 100) : 3}%"
-						onpointerenter={(event) => show(event, bar.label, view === 'weekly' ? plural(bar.count) : `${bar.total.toLocaleString()} in all`)}
-						onpointerdown={(event) => show(event, bar.label, view === 'weekly' ? plural(bar.count) : `${bar.total.toLocaleString()} in all`)}
-					></div>
-				{/each}
+			<div class="overflow-x-auto">
+				<div class="flex min-w-[640px] flex-col gap-2.5" aria-hidden="true">
+					<div class="grid px-0.5" style="grid-template-columns: repeat({shown.length}, minmax(0, 1fr))">
+						{#each year.months as month}
+							<span class="text-[10px] leading-none whitespace-nowrap text-text-muted" style="grid-column: {month.column + 1}">{month.label}</span>
+						{/each}
+					</div>
+					<div class="grid h-24 gap-[3px]" style="grid-template-columns: repeat({shown.length}, minmax(0, 1fr))">
+						{#each shown as bar}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="flex items-end rounded-[2px] bg-heat-0"
+								onpointerenter={(event) => show(event, bar.title, plural(bar.value))}
+								onpointerdown={(event) => show(event, bar.title, plural(bar.value))}
+							>
+								<div
+									class="w-full rounded-[2px] {bar.value === tallest ? 'bg-text-primary' : 'bg-heat-3'}"
+									style="height: {bar.value > 0 ? Math.max(6, (bar.value / tallest) * 100) : 0}%"
+								></div>
+							</div>
+						{/each}
+					</div>
+				</div>
 			</div>
 			<table class="sr-only">
-				<caption>{view === 'weekly' ? 'Analyses per week' : 'Analyses in total, by week'}, last 26 weeks</caption>
+				<caption>{view === 'weekly' ? 'Analyses per week' : 'Analyses in total, by week'}, last 12 months</caption>
 				<thead><tr><th>Week</th><th>{view === 'weekly' ? 'Analyses' : 'Total so far'}</th></tr></thead>
 				<tbody>
 					{#each shown as bar}
-						<tr><td>{bar.label}</td><td>{bar.value}</td></tr>
+						<tr><td>{bar.row}</td><td>{bar.value}</td></tr>
 					{/each}
 				</tbody>
 			</table>
@@ -119,7 +141,8 @@
 		{#if tip}
 			<div
 				class="pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-full flex-col gap-px rounded-md border border-border-default bg-surface-3 px-3 py-[9px] whitespace-nowrap shadow-overlay"
-				style="left: {tip.x}px; top: {tip.y - 6}px"
+				bind:clientWidth={tipWidth}
+				style="left: {tipLeft}px; top: {tip.y - 6}px"
 				role="status"
 			>
 				<span class="text-[13px] text-text-primary">{tip.title}</span>

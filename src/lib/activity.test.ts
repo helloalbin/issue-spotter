@@ -79,28 +79,41 @@ test('levels compare a day with the busiest one in view', () => {
 	assert.equal(levelOf(3, 0), 0);
 });
 
-test('the heatmap is 53 columns of 7 days ending with today, with month labels', () => {
+test('the twelve months run Dec to Nov in November, as weeks that start on a Sunday', () => {
 	const now = at(2026, 11, 9);
 	const a = recordRun(recordRun(emptyActivity(), { at: now, kind: 'analysis' }), { at: now, kind: 'analysis' });
 	const map = heatmap(a, now);
-	assert.equal(map.columns.length, 53);
+	assert.equal(map.columns.length, 50);
 	assert.ok(map.columns.every((column) => column.length === 7));
+	assert.equal(new Date(2025, 10, 30).getDay(), 0, 'the first column starts on a Sunday, the one holding Dec 1');
+	assert.equal(map.columns[0][0].date, '2025-11-30');
+	assert.deepEqual(map.months.map((m) => m.label), ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov']);
+	assert.equal(map.months[0].column, 0);
 	const today = map.columns.flat().find((cell) => cell.date === '2026-11-09')!;
 	assert.deepEqual([today.count, today.level, today.future], [2, 4, false]);
 	assert.ok(map.columns.at(-1)!.some((cell) => cell.future), 'days after today are not filled in');
 	assert.equal(map.total, 2);
-	assert.equal(map.months.length, 13);
-	assert.equal(map.months.at(-1)!.label, 'Nov');
 });
 
-test('weekly counts and a running total that includes everything before the window', () => {
+test('the window moves with the month: in March it runs Apr to Mar', () => {
+	const map = heatmap(emptyActivity(), at(2026, 3, 15));
+	assert.deepEqual([map.months[0].label, map.months.at(-1)!.label], ['Apr', 'Mar']);
+	assert.ok(map.columns.length >= 48 && map.columns.length <= 53);
+});
+
+test('weekly bars cover the same weeks, read "Week of Sep 20, 2026" and keep a running total', () => {
 	const now = at(2026, 11, 9);
 	let a = recordRun(emptyActivity(), { at: at(2025, 1, 5), kind: 'analysis' });
+	a = recordRun(a, { at: at(2026, 9, 22), kind: 'analysis' });
 	a = recordRun(a, { at: now, kind: 'analysis' });
-	const bars = weekly(a, now, 4);
-	assert.equal(bars.length, 4);
-	assert.deepEqual(bars.at(-1), { label: 'Week of Nov 8', count: 1, total: 2 });
-	assert.equal(bars[0].total, 1);
+	const { bars, months } = weekly(a, now);
+	assert.equal(bars.length, 50);
+	assert.equal(months.length, 12);
+	const sep = bars.find((bar) => bar.label === 'Week of Sep 20, 2026')!;
+	assert.deepEqual([sep.count, sep.total, sep.through], [1, 2, 'Through week of Sep 20, 2026']);
+	assert.deepEqual(bars.at(-1), { label: 'Week of Nov 8, 2026', through: 'Through week of Nov 8, 2026', count: 1, total: 3 });
+	assert.equal(bars[0].total, 1, 'what came before the twelve months is in the total');
+	assert.equal(bars.find((bar) => bar.label === 'Week of Nov 1, 2026')!.count, 0);
 });
 
 test('stored data that is the wrong shape is dropped, and good data survives a round trip', () => {

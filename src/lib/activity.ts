@@ -166,14 +166,30 @@ export function levelOf(count: number, max: number): Cell['level'] {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** "Sep 20, 2026". */
+const longDate = (key: string) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${Number(key.slice(8))}, ${key.slice(0, 4)}`;
+
 /**
- * A year of days as columns of weeks (Sunday to Saturday), the last column holding today, with a
- * month label over the first column of each month.
+ * The twelve months ending with this one, laid out as weeks that start on a Sunday: from the week
+ * holding the 1st of the month eleven months back (in November, December) to the week holding today.
+ * Each month is labelled over the week that holds its 1st.
  */
-export function heatmap(activity: Activity, now: number, weeks = 53): { columns: Cell[][]; months: { label: string; column: number }[]; max: number; total: number } {
+export function yearWindow(now: number): { start: number; weeks: number; today: number; months: { label: string; column: number }[] } {
+	const date = new Date(now);
+	const first = new Date(date.getFullYear(), date.getMonth() - 11, 1);
+	const start = dayIndex(dayKey(first.getTime())) - first.getDay();
 	const today = dayIndex(dayKey(now));
-	const weekday = new Date(now).getDay();
-	const start = today - weekday - (weeks - 1) * 7;
+	const weeks = (today - date.getDay() - start) / 7 + 1;
+	const months = Array.from({ length: 12 }, (_, i) => {
+		const m = new Date(first.getFullYear(), first.getMonth() + i, 1);
+		return { label: MONTHS[m.getMonth()], column: Math.floor((dayIndex(dayKey(m.getTime())) - start) / 7) };
+	});
+	return { start, weeks, today, months };
+}
+
+/** The twelve months as columns of weeks (Sunday to Saturday), the last column holding today. */
+export function heatmap(activity: Activity, now: number): { columns: Cell[][]; months: { label: string; column: number }[]; max: number; total: number } {
+	const { start, weeks, today, months } = yearWindow(now);
 	let max = 0;
 	let total = 0;
 	for (let i = start; i <= today; i++) {
@@ -183,45 +199,43 @@ export function heatmap(activity: Activity, now: number, weeks = 53): { columns:
 	}
 
 	const columns: Cell[][] = [];
-	const months: { label: string; column: number }[] = [];
-	let lastMonth = -1;
 	for (let w = 0; w < weeks; w++) {
 		const column: Cell[] = [];
 		for (let d = 0; d < 7; d++) {
 			const index = start + w * 7 + d;
-			const date = keyOfIndex(index);
 			const future = index > today;
-			const count = future ? 0 : (activity.days[date]?.runs ?? 0);
-			column.push({ date, count, level: levelOf(count, max), future });
+			const count = future ? 0 : (activity.days[keyOfIndex(index)]?.runs ?? 0);
+			column.push({ date: keyOfIndex(index), count, level: levelOf(count, max), future });
 		}
 		columns.push(column);
-		const month = Number(column[0].date.slice(5, 7)) - 1;
-		if (month !== lastMonth) {
-			months.push({ label: MONTHS[month], column: w });
-			lastMonth = month;
-		}
 	}
 	return { columns, months, max, total };
 }
 
-export type Bar = { label: string; count: number; total: number };
+export type Bar = {
+	/** "Week of Sep 20, 2026". */
+	label: string;
+	/** "Through week of Sep 20, 2026". */
+	through: string;
+	count: number;
+	/** Everything up to the end of this week, including what came before the twelve months. */
+	total: number;
+};
 
-/** Runs per week for the last `weeks` weeks, and the running total at the end of each. */
-export function weekly(activity: Activity, now: number, weeks = 26): Bar[] {
-	const today = dayIndex(dayKey(now));
-	const start = today - new Date(now).getDay() - (weeks - 1) * 7;
-	let before = 0;
-	for (const [key, d] of Object.entries(activity.days)) if (dayIndex(key) < start) before += d.runs;
+/** One bar per week of the same twelve months: runs that week, and the running total. */
+export function weekly(activity: Activity, now: number): { bars: Bar[]; months: { label: string; column: number }[] } {
+	const { start, weeks, months } = yearWindow(now);
+	let running = 0;
+	for (const [key, day] of Object.entries(activity.days)) if (dayIndex(key) < start) running += day.runs;
 	const bars: Bar[] = [];
-	let running = before;
 	for (let w = 0; w < weeks; w++) {
 		let count = 0;
 		for (let d = 0; d < 7; d++) count += activity.days[keyOfIndex(start + w * 7 + d)]?.runs ?? 0;
 		running += count;
-		const first = keyOfIndex(start + w * 7);
-		bars.push({ label: `Week of ${MONTHS[Number(first.slice(5, 7)) - 1]} ${Number(first.slice(8))}`, count, total: running });
+		const first = longDate(keyOfIndex(start + w * 7));
+		bars.push({ label: `Week of ${first}`, through: `Through week of ${first}`, count, total: running });
 	}
-	return bars;
+	return { bars, months };
 }
 
 /** What is read back from storage, made safe: anything that is not the right shape is dropped. */

@@ -83,14 +83,6 @@
 					</button>
 				{/if}
 				<ThemeToggle />
-				{#if auth.user}
-					<span
-						class="grid size-[30px] place-items-center rounded-pill border border-border-subtle bg-linear-135 from-avatar-from to-avatar-to text-sm font-semibold text-avatar-fg"
-						aria-hidden="true"
-					>
-						{(auth.user.name ?? auth.user.email ?? '').charAt(0).toUpperCase()}
-					</span>
-				{/if}
 			</span>
 		</div>
 

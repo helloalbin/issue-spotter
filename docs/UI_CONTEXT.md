@@ -70,7 +70,7 @@ Pages: `/` (the analysis), `/samples`, `/learn/how-it-works`, `/learn/guide`, `/
 
 ## Sign-in
 
-The sidebar shows "Sign In for Free" only when all four `FIREBASE_*` values are set. It opens the dialog, which offers Continue with Google and links to Terms and Privacy. The dialog closes when sign-in succeeds. Closing the popup is not an error. A signed-in user sees an account block in the sidebar (gradient avatar, name, email, and an up-down chevron that opens a menu with Sign out) and a matching avatar beside the theme toggle in the top bar. The avatar gradient uses the `avatar-from`, `avatar-to` and `avatar-fg` tokens. Requests carry `Authorization: Bearer <ID token>` when signed in.
+The sidebar shows "Sign In for Free" only when all four `FIREBASE_*` values are set. It opens the dialog, which offers Continue with Google and links to Terms and Privacy. The dialog closes when sign-in succeeds. Closing the popup is not an error. A signed-in user sees an account block in the sidebar (gradient avatar, name, email, and an up-down chevron that opens a menu with Sign out). The design's second avatar in the top bar is deliberately not built: it duplicated this block. The avatar gradient uses the `avatar-from`, `avatar-to` and `avatar-fg` tokens. Requests carry `Authorization: Bearer <ID token>` when signed in.
 
 ## Accessibility
 

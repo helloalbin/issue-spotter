@@ -1,3 +1,4 @@
-# allow crawling everything by default
+# Stealth POC: ask all crawlers to stay away until launch.
+# Change to "Disallow:" (empty) and remove the noindex tag in src/app.html when going public.
 User-agent: *
-Disallow:
+Disallow: /

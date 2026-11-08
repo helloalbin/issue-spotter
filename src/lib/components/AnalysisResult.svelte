@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { toMarkdown } from '#lib/markdown.js';
+	import { actLink, caseLink, sectionLink } from '#lib/sources.js';
 	import type { SpotterResult } from '#lib/spotter.js';
-	import Chip from './Chip.svelte';
 	import Icon from './Icon.svelte';
 
 	type Props = { facts: string; result: SpotterResult; onEdit: () => void };
@@ -65,7 +65,23 @@
 		</span>
 		<h2 class="type-h3">Issue analysis</h2>
 	</header>
-	<p class="type-meta mt-2 text-text-tertiary">{summary}</p>
+	<div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-2">
+		<p class="type-meta text-text-tertiary">{summary}</p>
+		{#if result.jurisdiction}
+			<span
+				class="flex items-center gap-[5px] rounded-pill border border-border-subtle bg-surface-1 px-[9px] py-[3px] text-[11px] text-text-tertiary"
+			>
+				<Icon name="mapPin" size={11} />
+				Jurisdiction: {result.jurisdiction}
+			</span>
+		{/if}
+		<span
+			class="flex items-center gap-[5px] rounded-pill border border-border-subtle bg-surface-1 px-[9px] py-[3px] text-[11px] text-text-tertiary"
+		>
+			<Icon name="link" size={11} class="text-accent-text" />
+			Search links
+		</span>
+	</div>
 
 	<div class="mt-6 divide-y divide-border-subtle border-t border-border-subtle">
 		<section class="py-6">
@@ -103,11 +119,29 @@
 		<section class="py-6">
 			{@render heading('Landmark precedents', result.precedents.length)}
 			{#if result.precedents.length > 0}
-				<ul class="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
-					{#each result.precedents as item}
-						<li class="flex gap-2 text-body text-text-primary">
-							<span class="text-text-muted" aria-hidden="true">·</span>
-							{item}
+				<ul class="mt-4 grid gap-x-7 gap-y-3.5 sm:grid-cols-2">
+					{#each result.precedents as precedent}
+						{@const link = caseLink(precedent, result.jurisdiction)}
+						<li>
+							<a
+								href={link.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="group inline-flex items-start gap-1.5 text-body font-medium text-text-primary hover:underline"
+							>
+								<span>
+									{precedent.name}
+									<span class="sr-only">(searches {link.name}, opens in a new tab)</span>
+								</span>
+								<Icon
+									name="externalLink"
+									size={12}
+									class="mt-1.5 shrink-0 text-text-muted group-hover:text-text-primary"
+								/>
+							</a>
+							{#if precedent.year}
+								<p class="font-mono text-[11px] text-text-tertiary">{precedent.year}</p>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -127,9 +161,25 @@
 						<li class="rounded-xl border border-border-default bg-surface-1 p-4">
 							<h4 class="type-label">{entry.act}</h4>
 							{#if entry.sections.length > 0}
-								<ul class="mt-2 flex flex-wrap gap-2">
+								<ul class="mt-2 flex flex-wrap gap-1.5">
 									{#each entry.sections as section}
-										<li><Chip mono class="rounded-md px-2 py-0.5 text-text-secondary">{section}</Chip></li>
+										{@const link = sectionLink(entry.act, section, result.jurisdiction)}
+										<li>
+											<a
+												href={link.href}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="group inline-flex items-center gap-[5px] rounded-sm border border-border-subtle bg-surface-2 px-[9px] py-[3px] font-mono text-caption text-text-secondary hover:text-text-primary"
+											>
+												{section}
+												<span class="sr-only">(searches {link.name}, opens in a new tab)</span>
+												<Icon
+													name="externalLink"
+													size={11}
+													class="text-text-muted group-hover:text-text-primary"
+												/>
+											</a>
+										</li>
 									{/each}
 								</ul>
 							{:else}

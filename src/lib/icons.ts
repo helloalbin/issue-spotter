@@ -30,7 +30,12 @@ import {
 	Sun,
 	Swords,
 	Telescope,
-	X
+	X,
+	ExternalLink,
+	Globe,
+	MapPin,
+	PanelRight,
+	PanelRightClose
 } from '@lucide/svelte';
 
 /** Every icon the UI uses, by the name passed to <Icon>. Add an entry here to use a new one. */
@@ -66,7 +71,12 @@ export const icons = {
 	sun: Sun,
 	swords: Swords,
 	telescope: Telescope,
-	x: X
+	x: X,
+	externalLink: ExternalLink,
+	globe: Globe,
+	mapPin: MapPin,
+	panelRight: PanelRight,
+	panelRightClose: PanelRightClose
 } as const;
 
 export type IconName = keyof typeof icons;

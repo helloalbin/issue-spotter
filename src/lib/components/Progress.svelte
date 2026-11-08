@@ -1,8 +1,7 @@
 <script lang="ts">
-	import type { ActReference, SpotSection } from '#lib/spotter.js';
+	import type { SpotSection, Streamed } from '#lib/spotter.js';
 	import Icon from './Icon.svelte';
 
-	type Streamed = Record<Exclude<SpotSection, 'acts'>, string[]> & { acts: ActReference[] };
 	type Props = { stage: 'verifying' | 'analyzing' | null; streamed: Streamed; closed: SpotSection[] };
 	let { stage, streamed, closed }: Props = $props();
 
@@ -29,7 +28,11 @@
 
 		sections.forEach((section, index) => {
 			const items =
-				section.key === 'acts' ? streamed.acts.map((entry) => entry.act) : streamed[section.key];
+				section.key === 'acts'
+					? streamed.acts.map((entry) => entry.act)
+					: section.key === 'precedents'
+						? streamed.precedents.map((entry) => entry.name)
+						: streamed[section.key];
 			rows.push({
 				label: section.label,
 				state: closed.includes(section.key)

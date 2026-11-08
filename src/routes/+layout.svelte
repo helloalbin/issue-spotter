@@ -5,16 +5,29 @@
 	import { page } from '$app/state';
 	import { auth } from '#lib/auth.svelte.js';
 	import Icon from '#lib/components/Icon.svelte';
+	import Inspector from '#lib/components/Inspector.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import SignInDialog from '#lib/components/SignInDialog.svelte';
 	import ThemeToggle from '#lib/components/ThemeToggle.svelte';
-	import { workspace } from '#lib/workspace.svelte.js';
+	import { WIDE_SCREEN, workspace } from '#lib/workspace.svelte.js';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
 	let menuOpen = $state(false);
 
-	onMount(() => auth.init());
+	onMount(() => {
+		auth.init();
+
+		// The verification pane starts open on wide screens unless the user closed it.
+		let saved: string | null = null;
+		try {
+			saved = localStorage.getItem('pane');
+		} catch {
+			// No saved choice.
+		}
+		// Below the breakpoint the pane is an overlay, so it never opens by itself.
+		workspace.paneOpen = matchMedia(WIDE_SCREEN).matches ? saved !== 'closed' : false;
+	});
 
 	// Whoever is acting changed, so the remaining-searches counter must be read again.
 	$effect(() => {
@@ -57,6 +70,18 @@
 				<Icon name="menu" />
 			</button>
 			<span class="ml-auto flex items-center gap-2.5">
+				{#if workspace.result}
+					<button
+						type="button"
+						onclick={() => workspace.togglePane()}
+						aria-label={workspace.paneOpen ? 'Hide verification pane' : 'Show verification pane'}
+						aria-expanded={workspace.paneOpen}
+						aria-controls="inspector"
+						class="grid size-[34px] place-items-center rounded-md border border-border-subtle bg-surface-2 text-text-primary"
+					>
+						<Icon name="panelRight" />
+					</button>
+				{/if}
 				<ThemeToggle />
 				{#if auth.user}
 					<span
@@ -73,6 +98,10 @@
 			{@render children()}
 		</div>
 	</div>
+
+	{#if workspace.result && workspace.paneOpen}
+		<Inspector />
+	{/if}
 </div>
 
 <SignInDialog />

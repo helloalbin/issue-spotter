@@ -1,7 +1,17 @@
 import { auth } from '#lib/auth.svelte.js';
 import { SAMPLES } from '#lib/samples.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
-import type { ActReference, QuotaInfo, SpotEvent, SpotSection, SpotterResult } from '#lib/spotter.js';
+import type {
+	AnalysisMeta,
+	QuotaInfo,
+	SpotEvent,
+	SpotSection,
+	SpotterResult,
+	Streamed
+} from '#lib/spotter.js';
+
+/** The width at which the verification pane sits beside the results instead of over them. */
+export const WIDE_SCREEN = '(min-width: 1024px)';
 
 /**
  * The analysis in progress. It lives outside any page so that opening a Learn page and coming back
@@ -19,12 +29,11 @@ class Workspace {
 	/** Live updates from the stream win over the value loaded with the page. */
 	liveQuota = $state<QuotaInfo | null>(null);
 	/** Entries found so far while the analysis is still being written, by section. */
-	streamed = $state<Record<Exclude<SpotSection, 'acts'>, string[]> & { acts: ActReference[] }>({
-		issues: [],
-		doctrines: [],
-		precedents: [],
-		acts: []
-	});
+	streamed = $state<Streamed>({ issues: [], doctrines: [], precedents: [], acts: [] });
+	/** The model and time behind the result on screen. */
+	meta = $state<AnalysisMeta | null>(null);
+	/** The verification pane beside the results. */
+	paneOpen = $state(true);
 	/** Sections the model has finished writing. */
 	closed = $state<SpotSection[]>([]);
 
@@ -77,15 +86,19 @@ class Workspace {
 		} else if ('stage' in event) {
 			this.stage = event.stage;
 		} else if ('item' in event) {
-			const { section, value } = event.item;
-			if (section === 'acts') this.streamed.acts.push(value);
-			else this.streamed[section].push(value);
+			if (event.item.section === 'acts') this.streamed.acts.push(event.item.value);
+			else if (event.item.section === 'precedents') this.streamed.precedents.push(event.item.value);
+			else this.streamed[event.item.section].push(event.item.value);
+		} else if ('meta' in event) {
+			this.meta = event.meta;
 		} else if ('sectionDone' in event) {
 			if (!this.closed.includes(event.sectionDone)) this.closed.push(event.sectionDone);
 		} else if ('result' in event) {
 			this.submittedFacts = this.facts;
 			this.facts = '';
 			this.result = {
+				jurisdiction:
+					typeof event.result?.jurisdiction === 'string' ? event.result.jurisdiction : undefined,
 				issues: Array.isArray(event.result?.issues) ? event.result.issues : [],
 				doctrines: Array.isArray(event.result?.doctrines) ? event.result.doctrines : [],
 				precedents: Array.isArray(event.result?.precedents) ? event.result.precedents : [],
@@ -95,6 +108,17 @@ class Workspace {
 			this.notice = "This doesn't look like a legal fact pattern. Update the facts and try again.";
 		} else if ('error' in event) {
 			this.errorMessage = event.error;
+		}
+	}
+
+	togglePane() {
+		this.paneOpen = !this.paneOpen;
+		// Only a choice made on a wide screen is remembered; on a narrow one the pane is an overlay.
+		if (!matchMedia(WIDE_SCREEN).matches) return;
+		try {
+			localStorage.setItem('pane', this.paneOpen ? 'open' : 'closed');
+		} catch {
+			// The choice still applies for this visit.
 		}
 	}
 
@@ -121,6 +145,7 @@ class Workspace {
 		this.isLoading = true;
 		this.streamed = { issues: [], doctrines: [], precedents: [], acts: [] };
 		this.closed = [];
+		this.meta = null;
 		this.#abort = new AbortController();
 
 		try {

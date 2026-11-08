@@ -257,7 +257,7 @@ Cost safeguards: set a hard monthly spend cap in the model provider's billing se
 | What | State |
 | --- | --- |
 | Domain `legalspotter.com` | Registered at GoDaddy. DNS is on Cloudflare (Free plan, Full setup). Parking records were removed; no web records yet, because the Worker is not deployed. |
-| Email | Cloudflare Email Routing: `org@legalspotter.com` and a catch-all both forward to the owner's inbox. Receive-only. |
+| Email | Cloudflare Email Routing: `support@legalspotter.com` and a catch-all both forward to the owner's inbox. Receive-only. |
 | Firebase project | `legalspotter-be82f`, Spark plan, Google provider only, web app registered. Authorized domains: localhost, the two Firebase defaults, `legalspotter.com`, `www.legalspotter.com`. Public web config is in the local `.env` (not committed). |
 | Cloudflare Worker, D1, secrets | Not created yet. |
 | Model provider spend cap | Not set yet. Set it before the first deploy. |

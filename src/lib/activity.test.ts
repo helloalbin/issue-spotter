@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emptyActivity, formatDuration, heatmap, levelOf, parseActivity, recordRun, siteOf, streaks, topShare, totalsOf, weekly } from './activity.ts';
+import { emptyActivity, featureHistory, formatDuration, heatmap, levelOf, parseActivity, recordRun, siteOf, skillHistory, streaks, topActs, topShare, totalsOf, weekly } from './activity.ts';
 
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
 
 test('a run adds to its local day, the totals and the maps; the input is untouched', () => {
 	const before = emptyActivity();
 	const after = recordRun(before, { at: at(2026, 11, 8), kind: 'analysis', ms: 19_000, issues: 4, skills: ['summarize', 'summarize'], acts: ['Transfer of Property Act, 1882', ' '], jurisdiction: 'India' });
-	assert.deepEqual(after.days['2026-11-08'], { runs: 1, issues: 4 });
+	assert.deepEqual(after.days['2026-11-08'], { runs: 1, issues: 4, kinds: { analysis: 1 }, skills: { summarize: 1 } });
 	assert.equal(after.longestMs, 19_000);
 	assert.deepEqual(after.skills, { summarize: 1 });
 	assert.deepEqual(after.acts, { 'Transfer of Property Act, 1882': 1 });
@@ -125,4 +125,55 @@ test('stored data that is the wrong shape is dropped, and good data survives a r
 	const bad = parseActivity(JSON.stringify({ version: 1, days: { 'nope': { runs: 1 }, '2026-11-08': { runs: -3 }, '2026-11-09': { runs: 2 } }, acts: { A: 'x', B: 2 } }));
 	assert.deepEqual(bad.days, { '2026-11-09': { runs: 2, issues: 0 } });
 	assert.deepEqual(bad.acts, { B: 2 });
+});
+
+test('each day keeps how many runs of each kind and which skills were used', () => {
+	let a = recordRun(emptyActivity(), { at: at(2026, 11, 8), kind: 'analysis', skills: ['summarize'] });
+	a = recordRun(a, { at: at(2026, 11, 8), kind: 'analysis', skills: ['summarize', 'draft'] });
+	a = recordRun(a, { at: at(2026, 11, 8), kind: 'research', skills: ['deep-research'] });
+	assert.deepEqual(a.days['2026-11-08'].kinds, { analysis: 2, research: 1 });
+	assert.deepEqual(a.days['2026-11-08'].skills, { summarize: 2, draft: 1, 'deep-research': 1 });
+	assert.equal(a.days['2026-11-08'].runs, 3);
+});
+
+test('features are counted per day over the window, and runs from before kinds were kept are not split', () => {
+	const now = at(2026, 11, 9);
+	let a = recordRun(emptyActivity(), { at: now, kind: 'analysis' });
+	a = recordRun(a, { at: now, kind: 'verify' });
+	a = recordRun(a, { at: now - 86400000, kind: 'analysis' });
+	// a day recorded by an older version: three runs, no kinds
+	a = { ...a, days: { ...a.days, '2026-11-05': { runs: 3, issues: 0 } } };
+	const h = featureHistory(a, now, 7);
+	assert.equal(h.dates.length, 7);
+	assert.equal(h.dates.at(-1), '2026-11-09');
+	const byKind = Object.fromEntries(h.rows.map((r) => [r.kind, r.total]));
+	assert.deepEqual(byKind, { analysis: 2, draft: 0, research: 0, compare: 0, verify: 1 });
+	assert.equal(h.unsplit, 3);
+	assert.deepEqual(h.rows[0].counts.slice(-2), [1, 1]);
+	assert.equal(h.rows[0].share, 67);
+	assert.equal(h.rows[4].share, 33);
+	assert.equal(h.tallest, 1);
+	assert.equal(featureHistory(a, now, 3).unsplit, 0, 'the old day is outside a 3-day window');
+});
+
+test('skills are totalled over the window, most used first, never-used ones left out', () => {
+	const now = at(2026, 11, 9);
+	let a = recordRun(emptyActivity(), { at: now, kind: 'analysis', skills: ['summarize', 'draft'] });
+	a = recordRun(a, { at: now - 86400000, kind: 'analysis', skills: ['summarize'] });
+	a = recordRun(a, { at: now - 20 * 86400000, kind: 'analysis', skills: ['counter-arguments'] });
+	assert.deepEqual(skillHistory(a, now, 7), [{ id: 'summarize', total: 2 }, { id: 'draft', total: 1 }]);
+	assert.deepEqual(skillHistory(a, now, 30).map((s) => s.id), ['summarize', 'counter-arguments', 'draft']);
+	assert.deepEqual(skillHistory(emptyActivity(), now, 30), []);
+});
+
+test('the top acts, with their share, capped at the limit', () => {
+	const a = { ...emptyActivity(), acts: { A: 6, B: 3, C: 1, D: 0 } };
+	assert.deepEqual(topActs(a, 2), [{ name: 'A', count: 6, pct: 60 }, { name: 'B', count: 3, pct: 30 }]);
+	assert.deepEqual(topActs(emptyActivity()), []);
+});
+
+test('stored kinds and skills are validated and old days without them still load', () => {
+	const loaded = parseActivity(JSON.stringify({ version: 1, days: { '2026-11-08': { runs: 2, issues: 1, kinds: { analysis: 2, bogus: 5, draft: -1 }, skills: { summarize: 2, '': 0 } }, '2026-11-07': { runs: 1 } } }));
+	assert.deepEqual(loaded.days['2026-11-08'], { runs: 2, issues: 1, kinds: { analysis: 2 }, skills: { summarize: 2 } });
+	assert.deepEqual(loaded.days['2026-11-07'], { runs: 1, issues: 0 });
 });

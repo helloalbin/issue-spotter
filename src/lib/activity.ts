@@ -6,10 +6,19 @@
 
 export type RunKind = 'analysis' | 'draft' | 'research' | 'compare' | 'verify';
 
+/** One day's tally: runs and issues, and (since the analytics tab) which kinds of run and which skills. */
+export type DayCount = {
+	runs: number;
+	issues: number;
+	/** How many runs of each kind. Days recorded before this was kept do not have it. */
+	kinds?: Partial<Record<RunKind, number>>;
+	skills?: Record<string, number>;
+};
+
 export type Activity = {
 	version: 1;
 	/** Runs and issues spotted per local calendar day, "YYYY-MM-DD". */
-	days: Record<string, { runs: number; issues: number }>;
+	days: Record<string, DayCount>;
 	/** The longest single run, in milliseconds. */
 	longestMs: number;
 	/** How many times each skill was used. */
@@ -47,12 +56,12 @@ export function dayKey(at: number): string {
 }
 
 /** A number for a day that moves by one each day whatever the clocks do. */
-function dayIndex(key: string): number {
+export function dayIndex(key: string): number {
 	const [y, m, d] = key.split('-').map(Number);
 	return Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
 }
 
-const keyOfIndex = (index: number) => {
+export const keyOfIndex = (index: number) => {
 	const d = new Date(index * 86_400_000);
 	return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 };
@@ -79,10 +88,20 @@ function pruned(map: Record<string, number>): Record<string, number> {
 /** The tally with one more run in it. The input is not changed. */
 export function recordRun(activity: Activity, run: Run): Activity {
 	const key = dayKey(run.at);
-	const day = activity.days[key] ?? { runs: 0, issues: 0 };
+	const day: DayCount = activity.days[key] ?? { runs: 0, issues: 0 };
+	const skills = { ...day.skills };
+	for (const skill of new Set(run.skills ?? [])) skills[skill] = (skills[skill] ?? 0) + 1;
 	let next: Activity = {
 		...activity,
-		days: { ...activity.days, [key]: { runs: day.runs + 1, issues: day.issues + Math.max(0, run.issues ?? 0) } },
+		days: {
+			...activity.days,
+			[key]: {
+				runs: day.runs + 1,
+				issues: day.issues + Math.max(0, run.issues ?? 0),
+				kinds: { ...day.kinds, [run.kind]: (day.kinds?.[run.kind] ?? 0) + 1 },
+				...(Object.keys(skills).length > 0 && { skills })
+			}
+		},
 		longestMs: Math.max(activity.longestMs, Math.max(0, run.ms ?? 0)),
 		citations: activity.citations + Math.max(0, run.citations ?? 0)
 	};
@@ -263,8 +282,15 @@ export function parseActivity(raw: string | null): Activity {
 		const counts = (value: unknown): Record<string, number> =>
 			Object.fromEntries(Object.entries(value && typeof value === 'object' ? value : {}).filter(([, n]) => Number.isFinite(n) && (n as number) >= 0).slice(0, MAX_KEYS)) as Record<string, number>;
 		const days: Activity['days'] = {};
+		const KINDS: RunKind[] = ['analysis', 'draft', 'research', 'compare', 'verify'];
 		for (const [key, d] of Object.entries(data.days as Record<string, any>)) {
-			if (/^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(d?.runs) && d.runs >= 0) days[key] = { runs: d.runs, issues: Number.isFinite(d?.issues) && d.issues >= 0 ? d.issues : 0 };
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !Number.isFinite(d?.runs) || d.runs < 0) continue;
+			const day: DayCount = { runs: d.runs, issues: Number.isFinite(d?.issues) && d.issues >= 0 ? d.issues : 0 };
+			const kinds = Object.fromEntries(KINDS.filter((kind) => Number.isFinite(d?.kinds?.[kind]) && d.kinds[kind] > 0).map((kind) => [kind, d.kinds[kind]]));
+			if (Object.keys(kinds).length > 0) day.kinds = kinds;
+			const skills = Object.fromEntries(Object.entries(d?.skills && typeof d.skills === 'object' ? d.skills : {}).filter(([name, n]) => name.length < 40 && Number.isFinite(n) && (n as number) > 0).slice(0, 12));
+			if (Object.keys(skills).length > 0) day.skills = skills as Record<string, number>;
+			days[key] = day;
 		}
 		return {
 			version: 1,
@@ -279,4 +305,62 @@ export function parseActivity(raw: string | null): Activity {
 	} catch {
 		return emptyActivity();
 	}
+}
+
+/** The kinds of run, in the order they are listed, with how each is named. */
+export const FEATURES: { kind: RunKind; label: string; nouns: [string, string] }[] = [
+	{ kind: 'analysis', label: 'Analyses', nouns: ['analysis', 'analyses'] },
+	{ kind: 'draft', label: 'Drafts', nouns: ['draft', 'drafts'] },
+	{ kind: 'research', label: 'Deep research', nouns: ['report', 'reports'] },
+	{ kind: 'compare', label: 'Case comparisons', nouns: ['comparison', 'comparisons'] },
+	{ kind: 'verify', label: 'Citation checks', nouns: ['check', 'checks'] }
+];
+
+export type FeatureRow = { kind: RunKind; label: string; nouns: [string, string]; total: number; share: number; counts: number[] };
+
+/**
+ * How many runs of each kind there were on each of the last `days` days. `unsplit` is runs recorded
+ * before kinds were kept, which belong to no feature. Shares are of the runs that are split.
+ */
+export function featureHistory(activity: Activity, now: number, days: number): { rows: FeatureRow[]; dates: string[]; labels: string[]; unsplit: number; tallest: number } {
+	const today = dayIndex(dayKey(now));
+	const dates: string[] = [];
+	for (let i = today - days + 1; i <= today; i++) dates.push(keyOfIndex(i));
+
+	let unsplit = 0;
+	const rows = FEATURES.map((feature) => ({ ...feature, total: 0, share: 0, counts: [] as number[] }));
+	for (const date of dates) {
+		const day = activity.days[date];
+		let split = 0;
+		for (const row of rows) {
+			const n = day?.kinds?.[row.kind] ?? 0;
+			row.counts.push(n);
+			row.total += n;
+			split += n;
+		}
+		unsplit += Math.max(0, (day?.runs ?? 0) - split);
+	}
+	const all = rows.reduce((sum, row) => sum + row.total, 0);
+	for (const row of rows) row.share = all > 0 ? Math.round((row.total / all) * 100) : 0;
+	return { rows, dates, labels: dates.map(longDate), unsplit, tallest: Math.max(1, ...rows.flatMap((row) => row.counts)) };
+}
+
+/** How often each skill was used over the last `days` days, most used first; skills never used are left out. */
+export function skillHistory(activity: Activity, now: number, days: number): { id: string; total: number }[] {
+	const today = dayIndex(dayKey(now));
+	const totals: Record<string, number> = {};
+	for (let i = today - days + 1; i <= today; i++) {
+		for (const [id, n] of Object.entries(activity.days[keyOfIndex(i)]?.skills ?? {})) totals[id] = (totals[id] ?? 0) + n;
+	}
+	return Object.entries(totals).map(([id, total]) => ({ id, total })).filter((entry) => entry.total > 0).sort((a, b) => b.total - a.total || a.id.localeCompare(b.id));
+}
+
+/** The acts that came up most, with their share of all the acts that came up. */
+export function topActs(activity: Activity, limit = 5): { name: string; count: number; pct: number }[] {
+	const entries = Object.entries(activity.acts).filter(([, n]) => n > 0);
+	const total = entries.reduce((sum, [, n]) => sum + n, 0);
+	return entries
+		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+		.slice(0, limit)
+		.map(([name, count]) => ({ name, count, pct: Math.round((count / total) * 100) }));
 }

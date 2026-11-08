@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import { recentDays } from '#lib/activity.js';
 	import { activityStore } from '#lib/activity.svelte.js';
 	import { auth } from '#lib/auth.svelte.js';
+	import AnalyticsTab from '#lib/components/AnalyticsTab.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import RecentUsageChart from '#lib/components/RecentUsageChart.svelte';
@@ -13,6 +15,14 @@
 	/** The times and the history are the browser's, so nothing is drawn until the page is in one. */
 	let now = $state(0);
 	onMount(() => (now = Date.now()));
+
+	/** Overview is the limits; Analytics is how the person's own usage was spent. A link can open either. */
+	type Tab = 'overview' | 'analytics';
+	let tab = $state<Tab>(page.url.searchParams.get('tab') === 'analytics' ? 'analytics' : 'overview');
+	const TABS: { id: Tab; label: string }[] = [
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'analytics', label: 'Analytics' }
+	];
 
 	// Read the limits afresh whenever someone is signed in here, so the figures are not stale.
 	$effect(() => {
@@ -48,6 +58,23 @@
 		{/if}
 	</section>
 {:else}
+	<div role="tablist" aria-label="Usage views" class="flex gap-0.5">
+		{#each TABS as entry}
+			<button
+				type="button"
+				role="tab"
+				aria-selected={tab === entry.id}
+				onclick={() => (tab = entry.id)}
+				class="rounded-pill px-3 py-2 text-body transition {tab === entry.id ? 'bg-surface-2 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}"
+			>
+				{entry.label}
+			</button>
+		{/each}
+	</div>
+
+	{#if tab === 'analytics'}
+		<AnalyticsTab activity={activityStore.data} {now} />
+	{:else}
 	<section class="flex flex-col gap-3" aria-labelledby="limits-title">
 		<div class="flex flex-col gap-0.5">
 			<h3 id="limits-title" class="text-lg font-medium text-text-primary">Plan limits</h3>
@@ -112,4 +139,5 @@
 			<Icon name="chevronRight" size={15} />
 		</a>
 	</section>
+	{/if}
 {/if}

@@ -7,6 +7,7 @@
 	import ErrorNotice from '#lib/components/ErrorNotice.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Progress from '#lib/components/Progress.svelte';
+	import ReadingCard from '#lib/components/ReadingCard.svelte';
 	import { SAMPLES } from '#lib/samples.js';
 	import { SITE_NAME } from '#lib/site.js';
 	import { workspace } from '#lib/workspace.svelte.js';
@@ -85,14 +86,26 @@
 <main id="main" bind:this={mainEl} class="flex-1 overflow-y-auto">
 	{#if workspace.thread.length > 0}
 		{#each workspace.thread as exchange, index (index)}
-			<AnalysisResult
-				{exchange}
-				{index}
-				previous={index > 0 ? workspace.thread[index - 1].result : null}
-				turns={workspace.turns.slice(0, index + 1)}
-				isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
-				onEdit={() => workspace.editLast()}
-			/>
+			{#if exchange.kind === 'reading'}
+				<ReadingCard
+					{exchange}
+					{index}
+					isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
+					busy={workspace.isLoading}
+					onNext={(action) => workspace.runNext(action)}
+					onEdit={() => workspace.editLast()}
+				/>
+			{:else}
+				<AnalysisResult
+					{exchange}
+					{index}
+					ordinal={workspace.thread.slice(0, index).filter((earlier) => earlier.kind === 'analysis').length}
+					previous={workspace.previousAnalysis(index)?.result ?? null}
+					turns={workspace.turnsThrough(index)}
+					isLast={index === workspace.thread.length - 1 && !workspace.isLoading}
+					onEdit={() => workspace.editLast()}
+				/>
+			{/if}
 		{/each}
 
 		{#if workspace.isLoading}
@@ -107,7 +120,7 @@
 				stage={workspace.stage}
 				streamed={workspace.streamed}
 				closed={workspace.closed}
-				followUp
+				followUp={workspace.followUp}
 				skills={workspace.runSkills}
 			/>
 		{/if}

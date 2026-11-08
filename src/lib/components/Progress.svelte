@@ -25,9 +25,18 @@
 		{ key: 'openQuestions', label: 'Noting what is still unknown', followUp: true }
 	] as const;
 
+	// A draft is a different job, so it has its own steps instead of the analysis ones.
+	const draftSections = [
+		{ key: 'draft', label: 'Drafting the document' },
+		{ key: 'openQuestions', label: 'Listing the details you still need to fill in' },
+		{ key: 'draftNotes', label: 'Noting what to check before use' }
+	] as const;
+
 	// A skill's step is shown only when that skill is on.
 	let sections = $derived(
-		everySection.filter((section) =>
+		skills.includes('draft')
+			? draftSections
+			: everySection.filter((section) =>
 			'skill' in section ? skills.includes(section.skill) : 'followUp' in section ? followUp : true
 		)
 	);
@@ -54,7 +63,9 @@
 						? streamed.precedents.map((entry) => entry.name)
 						: section.key === 'counterArguments'
 							? streamed.counterArguments.map((entry) => entry.issue)
-							: streamed[section.key];
+							: section.key === 'draft'
+								? streamed.draft.map((block) => block.heading || 'Part of the document')
+								: streamed[section.key];
 			rows.push({
 				label: section.label,
 				state: closed.includes(section.key)

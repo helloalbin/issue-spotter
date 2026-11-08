@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { ACCEPTED_TYPES } from '#lib/file-types.js';
 	import { SKILLS } from '#lib/skills.js';
+	import type { ActiveSkill } from '#lib/skills.js';
 	import { workspace } from '#lib/workspace.svelte.js';
 	import Icon from './Icon.svelte';
 
@@ -9,9 +11,19 @@
 
 	let url = $state('');
 	let urlInput = $state<HTMLInputElement>();
+	let fileInput = $state<HTMLInputElement>();
 
 	let selected = $derived(workspace.skills.length);
 	let adding = $derived(workspace.urlStatus === 'loading');
+
+	/** Reads each chosen file in turn. The composer shows what happened to each, so the drawer closes. */
+	async function pickFiles(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const files = [...(input.files ?? [])];
+		input.value = '';
+		onClose();
+		for (const file of files) await workspace.addFile(file);
+	}
 
 	async function addUrl() {
 		if (adding || !url.trim()) return;
@@ -24,8 +36,8 @@
 
 <!--
 	The drawer from the design. Skills that change the analysis (Summarize, Counter-args) toggle, and
-	a link to a page on an allowed legal site can be added as background. Uploading files and the
-	other skills are not built yet, so they are shown disabled and labelled.
+	a link to a page on an allowed legal site or an uploaded PDF, Word file or image can be added as
+	background. The skills that are not built yet are shown disabled and labelled.
 -->
 <div
 	{id}
@@ -39,10 +51,21 @@
 		<p class="text-[11px] text-text-tertiary">Attach context, link a source, or apply a skill.</p>
 	</div>
 
+	<input
+		bind:this={fileInput}
+		type="file"
+		name="attachment"
+		accept={ACCEPTED_TYPES}
+		multiple
+		onchange={pickFiles}
+		class="hidden"
+		tabindex="-1"
+		aria-hidden="true"
+	/>
 	<button
 		type="button"
-		disabled
-		class="flex items-center gap-[11px] rounded-md px-2.5 py-[9px] text-left opacity-60"
+		onclick={() => fileInput?.click()}
+		class="flex items-center gap-[11px] rounded-md px-2.5 py-[9px] text-left transition hover:bg-surface-2"
 	>
 		<span
 			class="grid size-[30px] shrink-0 place-items-center rounded-md border border-border-subtle bg-surface-2 text-text-secondary"
@@ -53,7 +76,6 @@
 			<span class="block text-sm font-medium text-text-primary">Upload files</span>
 			<span class="mt-px block text-[11px] text-text-tertiary">PDF, DOCX, or images</span>
 		</span>
-		<span class="text-[11px] text-text-tertiary">Soon</span>
 	</button>
 
 	<button
@@ -75,16 +97,16 @@
 	<div class="mt-1 flex flex-col gap-3 border-t border-border-subtle pt-3">
 		<div class="flex items-center justify-between px-0.5">
 			<p class="font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">SKILLS</p>
-			<p class="text-[11px] text-text-tertiary">{selected > 0 ? `${selected} selected` : '2 available'}</p>
+			<p class="text-[11px] text-text-tertiary">{selected > 0 ? `${selected} selected` : `${SKILLS.filter((skill) => skill.available).length} available`}</p>
 		</div>
 		<div class="grid grid-cols-2 gap-2">
 			{#each SKILLS as skill}
-				{@const on = workspace.skills.includes(skill.id as 'summarize' | 'counter-arguments')}
+				{@const on = workspace.skills.includes(skill.id as ActiveSkill)}
 				<button
 					type="button"
 					disabled={!skill.available}
 					aria-pressed={skill.available ? on : undefined}
-					onclick={() => workspace.toggleSkill(skill.id as 'summarize' | 'counter-arguments')}
+					onclick={() => workspace.toggleSkill(skill.id as ActiveSkill)}
 					title={skill.available ? undefined : 'Coming soon'}
 					class="relative flex h-16 flex-col items-center justify-center gap-[7px] rounded-md border px-2 py-3 transition {on
 						? 'border-border-strong bg-surface-2 text-text-primary'

@@ -1,6 +1,7 @@
 import { auth } from '#lib/auth.svelte.js';
 import { MIN_FOLLOW_UP, caseText } from '#lib/case.js';
 import { SAMPLES } from '#lib/samples.js';
+import { toggleSkills } from '#lib/skills.js';
 import type { ActiveSkill } from '#lib/skills.js';
 import {
 	MAX_ATTACHMENTS,
@@ -24,12 +25,16 @@ import type {
 /** The width at which the verification pane sits beside the results instead of over them. */
 export const WIDE_SCREEN = '(min-width: 1024px)';
 
-/** One message the user sent and the analysis it produced. */
-export type Exchange = {
-	/** What the user typed, exactly. */
+type ExchangeBase = {
+	/** What the user typed, exactly. Empty when they sent only a file. */
 	added: string;
-	/** The pages attached with this message. */
+	/** The pages and files attached with this message. */
 	attachments: Attachment[];
+};
+
+/** A message and the analysis it produced. */
+export type AnalysisExchange = ExchangeBase & {
+	kind: 'analysis';
 	/** The analysis of the whole case up to and including this message. */
 	result: SpotterResult;
 	meta: AnalysisMeta | null;
@@ -39,8 +44,29 @@ export type Exchange = {
 	verification: 'idle' | 'running' | 'done';
 };
 
+/** A file sent with no message: the app says what it understood and asks what to do next. */
+export type ReadingExchange = ExchangeBase & { kind: 'reading' };
+
+export type Exchange = AnalysisExchange | ReadingExchange;
+
+/** What the app offers to do after reading a file the user sent on its own. */
+export type NextAction = {
+	id: 'issues' | 'counter-arguments' | 'draft';
+	label: string;
+	/** The message sent for the user when they pick it. */
+	message: string;
+};
+
+export const NEXT_ACTIONS: NextAction[] = [
+	{ id: 'issues', label: 'Spot the legal issues', message: 'Spot the legal issues in the attached file.' },
+	{ id: 'counter-arguments', label: 'Find the counter-arguments', message: 'Find the counter-arguments to what the attached file says.' },
+	{ id: 'draft', label: 'Draft a petition or complaint', message: 'Draft the appropriate petition or complaint from the attached file.' }
+];
+
 function emptyStreamed(): Streamed {
 	return {
+		draft: [],
+		draftNotes: [],
 		update: [],
 		openQuestions: [],
 		summary: [],
@@ -50,6 +76,11 @@ function emptyStreamed(): Streamed {
 		precedents: [],
 		acts: []
 	};
+}
+
+/** "an invoice", "a recipe", "an image": the right article for what the file turned out to be. */
+function withArticle(kind: string): string {
+	return /^[aeiou]/i.test(kind) ? `an ${kind}` : `a ${kind}`;
 }
 
 /**
@@ -69,6 +100,11 @@ class Workspace {
 	/** Adding a page fetches it, which takes a moment and can fail. */
 	urlStatus = $state<'idle' | 'loading'>('idle');
 	urlError = $state('');
+	/** The file being read, by name: extracting and understanding it takes a moment. */
+	fileStatus = $state<string | null>(null);
+	fileError = $state('');
+	/** Said when a file is not legal material at all; the file is not attached. */
+	fileNotice = $state('');
 	/** Every message sent so far, each with its analysis, oldest first. */
 	thread = $state<Exchange[]>([]);
 	/** The message being analysed right now, shown as a bubble once there is a conversation. */
@@ -87,11 +123,11 @@ class Workspace {
 	paneOpen = $state(true);
 
 	/** The most recent analysis, which the verification pane describes. */
-	latest = $derived(this.thread.at(-1) ?? null);
-	/** Whether the next message adds to a conversation instead of starting one. */
-	followUp = $derived(this.thread.length > 0);
-	/** The messages of the case so far. */
-	turns = $derived(this.thread.map((exchange) => exchange.added));
+	latest = $derived(this.#analysisAt(this.thread.length - 1));
+	/** Whether the next message adds to an analysis already on screen instead of starting one. */
+	followUp = $derived(this.latest !== null);
+	/** The messages the user typed, for the case text. A file sent alone has none. */
+	turns = $derived(this.thread.map((exchange) => exchange.added).filter((added) => added.trim()));
 	/** Every page attached so far, in the order they were added. */
 	attachments = $derived([...this.thread.flatMap((exchange) => exchange.attachments), ...this.draftAttachments]);
 
@@ -101,6 +137,28 @@ class Workspace {
 	showContextTip = $derived(
 		this.facts.trim().length >= 40 && !looksLegal(caseText(this.turns, this.facts))
 	);
+
+	/** The latest analysis at or before a place in the thread, skipping files that were only read. */
+	#analysisAt(index: number): AnalysisExchange | null {
+		for (let at = Math.min(index, this.thread.length - 1); at >= 0; at--) {
+			const exchange = this.thread[at];
+			if (exchange.kind === 'analysis') return exchange;
+		}
+		return null;
+	}
+
+	/** The analysis before the one at this place, which an update is compared against. */
+	previousAnalysis(index: number): AnalysisExchange | null {
+		return this.#analysisAt(index - 1);
+	}
+
+	/** The messages typed up to and including this place, for exporting that analysis. */
+	turnsThrough(index: number): string[] {
+		return this.thread
+			.slice(0, index + 1)
+			.map((exchange) => exchange.added)
+			.filter((added) => added.trim());
+	}
 
 	#sampleIndex = 0;
 	#abort: AbortController | null = null;
@@ -151,12 +209,12 @@ class Workspace {
 		this.thread = [];
 		this.draftAttachments = [];
 		this.urlError = '';
+		this.fileError = '';
+		this.fileNotice = '';
 	}
 
 	toggleSkill(skill: ActiveSkill) {
-		this.skills = this.skills.includes(skill)
-			? this.skills.filter((active) => active !== skill)
-			: [...this.skills, skill];
+		this.skills = toggleSkills(this.skills, skill);
 	}
 
 	/**
@@ -188,7 +246,7 @@ class Workspace {
 			}
 
 			const page: Attachment = payload.attachment;
-			if (this.attachments.some((existing) => existing.url === page.url)) {
+			if (this.attachments.some((existing) => existing.id === page.id)) {
 				this.urlError = 'That page is already attached.';
 				return false;
 			}
@@ -208,9 +266,91 @@ class Workspace {
 		}
 	}
 
-	/** Takes back a page attached to the message being written. */
-	removeAttachment(url: string) {
-		this.draftAttachments = this.draftAttachments.filter((page) => page.url !== url);
+	/**
+	 * Reads an uploaded file: checks its type, pulls the text out in the browser, and asks the server
+	 * what it is. A legal document is attached; anything else is turned away with a message.
+	 * Returns whether it was attached.
+	 */
+	async addFile(file: File): Promise<boolean> {
+		this.fileError = '';
+		this.fileNotice = '';
+		if (this.attachments.length >= MAX_ATTACHMENTS) {
+			this.fileError = `You can attach up to ${MAX_ATTACHMENTS} items to a case.`;
+			return false;
+		}
+
+		this.fileStatus = file.name;
+		try {
+			// The PDF and Word readers are large, so they load only when a file is added.
+			const { extractFile, ExtractError } = await import('#lib/extract.js');
+			let extracted;
+			try {
+				extracted = await extractFile(file);
+			} catch (error) {
+				if (!(error instanceof ExtractError)) console.error('Reading a file failed:', error);
+				this.fileError = error instanceof ExtractError ? error.message : 'That file could not be read.';
+				return false;
+			}
+
+			const response = await fetch('/api/file', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...(await auth.headers()) },
+				body: JSON.stringify(extracted)
+			});
+			const payload = await response.json().catch(() => null);
+
+			if (!response.ok) {
+				this.fileError = payload?.error ?? 'That file could not be read right now.';
+				if (payload?.code === 'auth_invalid') await auth.signOut();
+				return false;
+			}
+			if (payload.legal === false) {
+				this.fileNotice = `That looks like ${withArticle(payload.documentKind)}: ${payload.description} It doesn't look like legal material, so I haven't attached it. Legal Spotter works on case facts, notices, pleadings, judgments and similar documents. Upload something related to your matter, or describe the facts in your own words.`;
+				return false;
+			}
+
+			const attachment: Attachment = payload.attachment;
+			if (this.attachments.some((existing) => existing.id === attachment.id)) {
+				this.fileError = 'That file is already attached.';
+				return false;
+			}
+			const total = this.attachments.reduce((sum, existing) => sum + existing.text.length, 0);
+			if (total + attachment.text.length > MAX_CONTEXT_CHARS) {
+				this.fileError = 'The attachments are already as long as one case can hold. Remove one first.';
+				return false;
+			}
+
+			this.draftAttachments.push(attachment);
+			return true;
+		} catch {
+			this.fileError = 'Network error. Please try again.';
+			return false;
+		} finally {
+			this.fileStatus = null;
+		}
+	}
+
+	/** Sends one of the suggested next steps after a file was read, as if the user had typed it. */
+	async runNext(action: NextAction) {
+		if (this.isLoading) return;
+		// Spot-the-issues drops only Draft, which would otherwise write a document instead; the
+		// others add to what is already switched on.
+		const without = this.skills.filter((skill) => skill !== 'draft');
+		this.skills =
+			action.id === 'draft'
+				? ['draft']
+				: action.id === 'issues'
+					? without
+					: without.includes('counter-arguments')
+						? without
+						: [...without, 'counter-arguments'];
+		this.facts = action.message;
+		await this.submit();
+	}
+
+	/** Takes back a page or file attached to the message being written. */
+	removeAttachment(id: string) {
+		this.draftAttachments = this.draftAttachments.filter((attachment) => attachment.id !== id);
 	}
 
 	/**
@@ -232,13 +372,13 @@ class Workspace {
 		} else if ('stage' in event) {
 			if (event.stage === 'sourcing') {
 				const latest = this.thread.at(-1);
-				if (latest) latest.verification = 'running';
+				if (latest?.kind === 'analysis') latest.verification = 'running';
 			} else {
 				this.stage = event.stage;
 			}
 		} else if ('sources' in event) {
 			const latest = this.thread.at(-1);
-			if (latest) {
+			if (latest?.kind === 'analysis') {
 				latest.sources = Object.fromEntries(event.sources.map((match) => [match.key, match]));
 				latest.verification = 'done';
 			}
@@ -247,19 +387,29 @@ class Workspace {
 			else if (event.item.section === 'precedents') this.streamed.precedents.push(event.item.value);
 			else if (event.item.section === 'counterArguments') {
 				this.streamed.counterArguments.push(event.item.value);
-			} else this.streamed[event.item.section].push(event.item.value);
+			} else if (event.item.section === 'draft') this.streamed.draft.push(event.item.value);
+			else this.streamed[event.item.section].push(event.item.value);
 		} else if ('meta' in event) {
 			this.#meta = event.meta;
 		} else if ('sectionDone' in event) {
 			if (!this.closed.includes(event.sectionDone)) this.closed.push(event.sectionDone);
 		} else if ('result' in event) {
 			this.thread.push({
+				kind: 'analysis',
 				added,
 				attachments: this.draftAttachments,
 				meta: this.#meta,
 				sources: {},
 				verification: 'idle',
 				result: {
+					...(typeof event.result?.documentType === 'string' && {
+						documentType: event.result.documentType
+					}),
+					...(typeof event.result?.documentTitle === 'string' && {
+						documentTitle: event.result.documentTitle
+					}),
+					...(Array.isArray(event.result?.draft) && { draft: event.result.draft }),
+					...(Array.isArray(event.result?.draftNotes) && { draftNotes: event.result.draftNotes }),
 					...(typeof event.result?.headline === 'string' && { headline: event.result.headline }),
 					...(Array.isArray(event.result?.update) && { update: event.result.update }),
 					...(Array.isArray(event.result?.openQuestions) && {
@@ -315,11 +465,21 @@ class Workspace {
 		// With a conversation on screen, what is typed continues that case instead of starting a new one.
 		const added = this.facts;
 		const followUp = this.followUp;
-		const text = caseText(this.turns, added);
 
-		if (added.trim().length < (followUp ? MIN_FOLLOW_UP : MIN_FACTS)) {
+		// A file sent on its own is not analysed: the app says what it understood and asks what next.
+		if (!added.trim() && this.draftAttachments.some((attachment) => attachment.kind === 'file')) {
+			this.thread.push({ kind: 'reading', added: '', attachments: this.draftAttachments });
+			this.draftAttachments = [];
+			return;
+		}
+
+		const text = caseText(this.turns, added);
+		// With something attached, a few words such as "spot the issues" are enough to say what to do.
+		const minimum = followUp || this.attachments.length > 0 ? MIN_FOLLOW_UP : MIN_FACTS;
+
+		if (added.trim().length < minimum) {
 			this.errorMessage = followUp
-				? 'Add a few more words about what happened.'
+				? 'Add a few more words about what you want.'
 				: `Please provide a fuller factual summary (at least ${MIN_FACTS} characters).`;
 			return;
 		}
@@ -354,8 +514,10 @@ class Workspace {
 					skills: this.runSkills,
 					// With an analysis already on screen this is an update, so the earlier one goes along.
 					...(this.latest && { previous: previousOf(this.latest.result) }),
-					context: this.attachments.map(({ url, title, text, truncated }) => ({
+					context: this.attachments.map(({ kind, url, fileName, title, text, truncated }) => ({
+						kind,
 						url,
+						fileName,
 						title,
 						text,
 						truncated
@@ -421,7 +583,9 @@ class Workspace {
 				this.pending = null;
 				// The stream may have ended mid-verification; the search links simply stay.
 				const latest = this.thread.at(-1);
-				if (latest && latest.verification === 'running') latest.verification = 'done';
+				if (latest?.kind === 'analysis' && latest.verification === 'running') {
+					latest.verification = 'done';
+				}
 			}
 		}
 	}

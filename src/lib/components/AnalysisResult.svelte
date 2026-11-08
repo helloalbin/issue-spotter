@@ -4,14 +4,17 @@
 	import { caseLink, sectionLink } from '#lib/sources.js';
 	import { caseKey, lookupCount, sectionKey } from '#lib/spotter.js';
 	import type { ActReference, Precedent, SpotterResult } from '#lib/spotter.js';
-	import type { Exchange } from '#lib/workspace.svelte.js';
+	import type { AnalysisExchange } from '#lib/workspace.svelte.js';
 	import AttachedPages from './AttachedPages.svelte';
+	import DraftCard from './DraftCard.svelte';
 	import Icon from './Icon.svelte';
 
 	type Props = {
-		exchange: Exchange;
-		/** Its place in the conversation: 0 is the first message. */
+		exchange: AnalysisExchange;
+		/** Its place in the thread, which is also its anchor on the page. */
 		index: number;
+		/** How many analyses came before this one: 0 for the first, which is shown whole. */
+		ordinal: number;
 		/** The analysis before this one, which an update is compared against. */
 		previous: SpotterResult | null;
 		/** The messages of the case up to and including this one, for the Markdown export. */
@@ -20,7 +23,7 @@
 		isLast: boolean;
 		onEdit: () => void;
 	};
-	let { exchange, index, previous, turns, isLast, onEdit }: Props = $props();
+	let { exchange, index, ordinal, previous, turns, isLast, onEdit }: Props = $props();
 
 	let result = $derived(exchange.result);
 	let sources = $derived(exchange.sources);
@@ -34,7 +37,7 @@
 	 * set aside. The first analysis has nothing to compare with and is shown whole.
 	 */
 	let compare = $derived(
-		index > 0 && previous
+		ordinal > 0 && previous
 			? {
 					issues: compareBy(previous.issues, result.issues, (text) => text),
 					doctrines: compareBy(previous.doctrines, result.doctrines, (text) => text),
@@ -258,7 +261,7 @@
 	<div class="ml-auto max-w-xl rounded-xl border border-border-subtle bg-surface-2 px-4 py-[13px]">
 		<div class="flex items-center justify-between">
 			<span class="type-meta tracking-widest text-text-tertiary">
-				{index === 0 ? 'CASE FACTS' : 'ADDED TO CASE'}
+				{ordinal === 0 ? 'CASE FACTS' : 'ADDED TO CASE'}
 			</span>
 			<span class="flex items-center gap-3 text-caption text-text-tertiary">
 				<button
@@ -285,9 +288,12 @@
 		<AttachedPages pages={exchange.attachments} />
 	</div>
 
+	{#if result.draft}
+		<DraftCard {result} />
+	{:else}
 	{#if compare}
 		<header class="mt-8">
-			<p class="type-meta tracking-widest text-accent-text">UPDATE {index}</p>
+			<p class="type-meta tracking-widest text-accent-text">UPDATE {ordinal}</p>
 			<h2 class="type-h3 mt-1">{result.headline ?? 'Updated analysis'}</h2>
 		</header>
 	{:else}
@@ -517,4 +523,5 @@
 			Model output can be incomplete or out of date. Verify before citing.
 		</p>
 	</div>
+	{/if}
 </article>

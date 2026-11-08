@@ -10,6 +10,23 @@
 	type Props = { docked?: boolean; quota: QuotaInfo | null; outOfSearches: boolean };
 	let { docked = false, quota, outOfSearches }: Props = $props();
 
+	// The primary button says what pressing it will do.
+	let fileOnly = $derived(
+		!workspace.facts.trim() && workspace.draftAttachments.some((attachment) => attachment.kind === 'file')
+	);
+	let primaryLabel = $derived(
+		fileOnly
+			? 'Send file'
+			: workspace.skills.includes('draft')
+				? 'Draft'
+				: workspace.followUp
+					? 'Add facts'
+					: 'Spot issues'
+	);
+	let primaryIcon = $derived(
+		fileOnly ? 'arrowUp' : workspace.skills.includes('draft') ? 'squarePen' : workspace.followUp ? 'arrowUp' : 'sparkles'
+	) as 'arrowUp' | 'squarePen' | 'sparkles';
+
 	let drawerOpen = $state(false);
 	let drawerMaxHeight = $state(528);
 	let addButton = $state<HTMLButtonElement>();
@@ -54,6 +71,14 @@
 		event.preventDefault();
 		workspace.submit();
 	}}
+	ondragover={(event) => {
+		if (!workspace.isLoading && event.dataTransfer?.types.includes('Files')) event.preventDefault();
+	}}
+	ondrop={async (event) => {
+		if (workspace.isLoading) return;
+		event.preventDefault();
+		for (const file of [...(event.dataTransfer?.files ?? [])]) await workspace.addFile(file);
+	}}
 	class="flex flex-col gap-3.5 rounded-2xl border border-border-default bg-surface-2 focus-within:border-border-strong {workspace.isLoading
 		? 'px-4 pt-4 pb-3'
 		: 'px-[18px] pt-[18px] pb-3.5'}"
@@ -94,18 +119,41 @@
 			id="facts"
 			name="facts"
 			bind:value={workspace.facts}
-			required
+			required={workspace.draftAttachments.length === 0}
 			autocomplete="off"
 			rows={docked ? 2 : 5}
 			placeholder={docked
-				? 'Add more facts to this case…'
+				? workspace.followUp
+					? 'Add more facts to this case…'
+					: 'Tell me what you want to do with the file…'
 				: 'Example: A tenant slipped on a wet staircase in a rented apartment building after repeated complaints to the landlord about a broken light and a leaking pipe…'}
 			class="w-full resize-none bg-transparent text-md leading-normal text-text-primary outline-none {docked
 				? ''
 				: 'min-h-33'}"
 		></textarea>
 
-		{#if workspace.skills.length > 0 || workspace.draftAttachments.length > 0}
+		{#if workspace.fileError}
+			<p role="alert" class="text-caption text-danger">{workspace.fileError}</p>
+		{/if}
+		{#if workspace.fileNotice}
+			<div
+				role="alert"
+				class="flex gap-2.5 rounded-lg border border-border-default bg-surface-1 p-3 text-caption leading-snug text-text-secondary"
+			>
+				<Icon name="triangleAlert" size={16} class="mt-px shrink-0 text-danger" />
+				<p class="flex-1">{workspace.fileNotice}</p>
+				<button
+					type="button"
+					onclick={() => (workspace.fileNotice = '')}
+					aria-label="Dismiss"
+					class="grid size-5 shrink-0 place-items-center rounded-md text-text-tertiary hover:text-text-primary"
+				>
+					<Icon name="x" size={12} />
+				</button>
+			</div>
+		{/if}
+
+		{#if workspace.skills.length > 0 || workspace.draftAttachments.length > 0 || workspace.fileStatus}
 			<ul class="flex flex-wrap gap-2" aria-label="Added to this message">
 				{#each workspace.skills as id}
 					{@const skill = SKILLS.find((entry) => entry.id === id)}
@@ -126,26 +174,34 @@
 						</li>
 					{/if}
 				{/each}
-				{#each workspace.draftAttachments as page}
+				{#each workspace.draftAttachments as page (page.id)}
 					<li
 						class="inline-flex max-w-72 items-center gap-1.5 rounded-pill border border-border-default bg-surface-1 py-1 pr-1.5 pl-2.5 text-caption text-text-secondary"
 					>
-						<Icon name="globe" size={12} class="shrink-0 text-accent-text" />
-						<a
-							href={page.url}
-							target="_blank"
-							rel="noopener noreferrer"
-							title={page.title}
-							class="truncate hover:underline"
-						>
-							{page.title}
-						</a>
+						<Icon
+							name={page.kind === 'file' ? 'fileText' : 'globe'}
+							size={12}
+							class="shrink-0 text-accent-text"
+						/>
+						{#if page.kind === 'page' && page.url}
+							<a
+								href={page.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								title={page.title}
+								class="truncate hover:underline"
+							>
+								{page.title}
+							</a>
+						{:else}
+							<span class="truncate" title={page.title}>{page.title}</span>
+						{/if}
 						{#if page.truncated}
-							<span class="shrink-0 text-text-tertiary" title="Only the start of this page is used">· partial</span>
+							<span class="shrink-0 text-text-tertiary" title="Only the start is used">· partial</span>
 						{/if}
 						<button
 							type="button"
-							onclick={() => workspace.removeAttachment(page.url)}
+							onclick={() => workspace.removeAttachment(page.id)}
 							aria-label="Remove {page.title}"
 							class="grid size-4 shrink-0 place-items-center rounded-pill text-text-tertiary hover:text-text-primary"
 						>
@@ -153,6 +209,15 @@
 						</button>
 					</li>
 				{/each}
+				{#if workspace.fileStatus}
+					<li
+						class="inline-flex items-center gap-1.5 rounded-pill border border-border-subtle py-1 pr-2.5 pl-2.5 text-caption text-text-tertiary"
+						role="status"
+					>
+						<Icon name="loader" size={12} class="spin" />
+						Reading {workspace.fileStatus}…
+					</li>
+				{/if}
 			</ul>
 		{/if}
 
@@ -190,8 +255,8 @@
 					class="gap-[7px] px-4 py-2.5 shadow-button"
 					disabled={workspace.overLimit || outOfSearches}
 				>
-					<Icon name={workspace.followUp ? 'arrowUp' : 'sparkles'} />
-					{workspace.followUp ? 'Add facts' : 'Spot issues'}
+					<Icon name={primaryIcon} />
+					{primaryLabel}
 				</Button>
 			</div>
 		</div>
@@ -201,7 +266,15 @@
 {#if quota || (docked && !workspace.isLoading)}
 	<div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 text-caption text-text-tertiary">
 		{#if docked && !workspace.isLoading}
-			<p>Your facts are added to this case and the analysis is updated below. It counts as one search.</p>
+			<p>
+				{#if !workspace.followUp}
+					Your message is sent with the file. It counts as one search.
+				{:else if workspace.skills.includes('draft')}
+					Your facts are added to this case and the draft is rewritten below. It counts as one search.
+				{:else}
+					Your facts are added to this case and the analysis is updated below. It counts as one search.
+				{/if}
+			</p>
 		{/if}
 		{#if quota}
 			<p class="ml-auto tabular-nums">

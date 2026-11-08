@@ -11,7 +11,14 @@
 	let verification = $derived(latest?.verification ?? 'idle');
 
 	let path = $derived(
-		result
+		result?.draft
+			? [
+					{ label: 'Read the facts', count: null },
+					{ label: 'Drafted the document', count: result.draft.length },
+					{ label: 'Listed the details to fill in', count: result.openQuestions?.length ?? 0 },
+					{ label: 'Noted what to check', count: result.draftNotes?.length ?? 0 }
+				]
+			: result
 			? [
 					{ label: 'Read the facts', count: null },
 					...(result.summary ? [{ label: 'Summarized the case', count: result.summary.length }] : []),
@@ -113,6 +120,7 @@
 		</p>
 	</section>
 
+	{#if !result?.draft}
 	<section class="flex flex-col gap-2.5">
 		<div class="flex items-center justify-between">
 			<h3 class="font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">SOURCES</h3>
@@ -181,4 +189,9 @@
 			<p class="text-sm text-text-tertiary">No cases or statutes to look up for these facts.</p>
 		{/if}
 	</section>
+	{:else}
+		<p class="text-sm text-text-tertiary">
+			A draft cites no cases to look up. Check every section number in [brackets] against the bare act.
+		</p>
+	{/if}
 </aside>

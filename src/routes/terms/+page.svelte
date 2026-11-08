@@ -16,6 +16,16 @@
 		opinion or an exam submission without checking the law yourself.
 	</p>
 
+	<h2>Drafts are study aids</h2>
+	<p>
+		The Draft skill writes a first draft of a document such as a police complaint, a complaint to a
+		Magistrate, or a petition, to help you practise. It is not legal advice, it is not a document
+		ready to file, and {SITE_NAME} is not a law firm. It leaves gaps in [square brackets] for
+		details it does not know, and its statute sections must be checked against the bare act.
+		<strong>Have an advocate review any draft before it is used for a real matter.</strong> You are
+		responsible for what you do with it.
+	</p>
+
 	<h2>The output can be wrong</h2>
 	<p>
 		The analysis is written by an AI model. It can miss issues, misstate the law, rely on outdated
@@ -26,7 +36,8 @@
 
 	<h2>What you may and may not do</h2>
 	<ul>
-		<li>Do not submit confidential or privileged information about real clients or cases.</li>
+		<li>Do not submit or upload confidential or privileged information about real clients or cases.</li>
+		<li>Only upload files you have the right to use.</li>
 		<li>Do not use the service to break the law or to harm, harass or deceive anyone.</li>
 		<li>
 			Do not try to get around the search limits, overload the service, scrape it automatically, or

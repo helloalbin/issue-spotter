@@ -45,6 +45,24 @@
 		</li>
 	</ul>
 
+	<h2>Files you upload</h2>
+	<p>
+		When you attach a PDF, a Word file or an image, the text is read in your browser (an image is
+		shrunk first) and sent to our server and on to the AI model provider, so it can say what the
+		file is, whether it is legal material, and what it says. An image is transcribed by the
+		provider. We do not store the file or its text. They stay in your browser and are sent again,
+		with your facts, each time the case is analysed. A file that is not legal material is not
+		attached. We count uploads per day, using the same random ID and hashed IP address as your
+		searches, so the feature cannot be abused. <strong>Do not upload confidential or privileged
+		documents.</strong>
+	</p>
+
+	<h2>Drafts</h2>
+	<p>
+		A draft is written from the facts and files you give, by the same AI model provider, and is
+		not stored by us. Copying or downloading it happens in your browser.
+	</p>
+
 	<h2>Pages you add</h2>
 	<p>
 		When you add a link, our server fetches that one page from Indian Kanoon, India Code or the
@@ -96,7 +114,10 @@
 	<ul>
 		<li><strong>Cloudflare</strong> hosts the site and stores the daily search counters.</li>
 		<li><strong>Google Firebase</strong> handles sign-in and stores your account details.</li>
-		<li><strong>An AI model provider</strong> receives the facts you submit to produce the analysis.</li>
+		<li>
+			<strong>An AI model provider</strong> receives the facts you submit, the files and pages you
+			attach, and any skills you switch on, to produce the analysis or draft.
+		</li>
 		<li>
 			<strong>OpenAI's web search</strong>, when reference checking is on, receives the names of
 			the references to find their pages.

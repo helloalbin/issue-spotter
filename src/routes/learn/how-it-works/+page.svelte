@@ -57,7 +57,23 @@
 		on each main issue. A skill stays on until you turn it off with the small x beside the box.
 	</p>
 
-	<h2>6. What to keep in mind</h2>
+	<h2>6. Uploading a file and drafting</h2>
+	<p>
+		Choose <strong>Upload files</strong> in the same drawer to attach a PDF, a Word (.docx) file or
+		an image (PNG, JPEG or WebP). Other kinds of file cannot be attached. {SITE_NAME} reads the file
+		and tells you what it is and what it says. If you send the file without typing anything, it
+		answers with what it understood and asks what you would like to do next. If the file is not
+		legal material at all, such as a recipe or a holiday photo, it says so and does not attach it.
+		A scanned PDF with no text cannot be read: upload its pages as images instead.
+	</p>
+	<p>
+		The <strong>Draft</strong> skill writes a first draft of a document for the facts you give: a
+		police complaint or FIR, a complaint to a Magistrate, or a civil or criminal petition. Details
+		it does not know are left in [square brackets] for you to fill in, and the section numbers are
+		in brackets too, so you check them. It is a study draft, not a document ready to file.
+	</p>
+
+	<h2>7. What to keep in mind</h2>
 	<ul>
 		<li>
 			<strong>It can be wrong.</strong> The model can miss an issue, misstate the law, or name a case
@@ -72,14 +88,14 @@
 		</li>
 	</ul>
 
-	<h2>7. Daily searches</h2>
+	<h2>8. Daily searches</h2>
 	<p>
 		Each analysis counts as one search. Visitors who are not signed in get a small number a day;
 		signing in with Google raises it. If a search fails on our side, it is given back. The counter
 		resets once a day and the page shows the time in your own time zone.
 	</p>
 
-	<h2>8. Your data</h2>
+	<h2>9. Your data</h2>
 	<p>
 		We do not store your case facts. They are sent to an AI model provider to produce the analysis.
 		See the <a href="/privacy">privacy policy</a> for the details, and avoid entering confidential

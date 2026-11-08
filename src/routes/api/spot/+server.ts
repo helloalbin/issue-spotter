@@ -1,20 +1,18 @@
 import { env } from 'cloudflare:workers';
 import {
+	ANALYSIS_MAX_TOKENS,
 	ANON_DAILY_LIMIT,
 	ANON_IP_DAILY_LIMIT,
+	CLASSIFIER_MAX_TOKENS,
 	OPENAI_API_KEY,
 	OPENAI_BASE_URL,
-	OPENAI_MODEL
+	OPENAI_MODEL,
+	QUOTA_REJECTION_MULTIPLIER
 } from '$app/env/private';
 import { quotaInfo, release, reserve } from '#lib/server/quota.js';
 import { MAX_FACTS, MIN_FACTS, looksLegal } from '#lib/spotter.js';
 import type { ActReference, SpotEvent, SpotterResult } from '#lib/spotter.js';
 import type { RequestHandler } from './$types';
-
-// Rejected (non-legal) input is free, but only this many times the daily limit.
-const REJECTION_MULTIPLIER = 3;
-const CLASSIFIER_MAX_TOKENS = 8;
-const ANALYSIS_MAX_TOKENS = 2000;
 
 const CLASSIFIER_PROMPT =
 	'Decide whether the user message describes a factual scenario that could raise legal issues ' +
@@ -251,8 +249,8 @@ export const POST: RequestHandler = async ({ request, fetch, locals }) => {
 					if (!(await isLegalFactPattern(fetch, trimmed))) {
 						// A rejection is free, up to a cap, so it can't be spammed.
 						const rejections = await reserve(db, 'reject', locals.visitor, {
-							anon: ANON_DAILY_LIMIT * REJECTION_MULTIPLIER,
-							ip: ANON_IP_DAILY_LIMIT * REJECTION_MULTIPLIER
+							anon: ANON_DAILY_LIMIT * QUOTA_REJECTION_MULTIPLIER,
+							ip: ANON_IP_DAILY_LIMIT * QUOTA_REJECTION_MULTIPLIER
 						});
 						if (rejections.ok) await refund();
 						send({ notLegal: true });

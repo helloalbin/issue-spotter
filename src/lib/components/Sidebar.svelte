@@ -57,8 +57,8 @@
 	<div class="flex flex-col gap-5">
 		<div class="flex items-center justify-between p-1.5">
 			<a href="/" class="flex items-center gap-2.5">
-				<span class="grid size-[30px] place-items-center rounded-md bg-accent-subtle">
-					<Logo />
+				<span class="grid size-10 place-items-center rounded-lg bg-accent-subtle">
+					<Logo size={26} />
 				</span>
 				<span>
 					<span class="block text-md leading-tight font-[650] tracking-[-0.2px]">{SITE_NAME}</span>
@@ -92,22 +92,25 @@
 			</nav>
 		</div>
 
-		<div class="flex flex-col gap-1.5">
-			<p class="px-2.5 font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">ABOUT</p>
-			<nav aria-label="About" class="flex flex-col gap-0.5">
-				{#each about as entry}
-					{@render item(entry.href, entry.label, entry.icon)}
-				{/each}
-				<a
-					href="mailto:{CONTACT_EMAIL}"
-					onclick={(event) => (event.preventDefault(), dialogs.openContact(), onClose?.())}
-					class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-body text-text-secondary transition hover:bg-surface-1 hover:text-text-primary"
-				>
-					<Icon name="mail" size={18} class="text-text-tertiary" />
-					Contact
-				</a>
-			</nav>
-		</div>
+		<!-- Signed in, the account menu carries these links. -->
+		{#if !auth.user}
+			<div class="flex flex-col gap-1.5">
+				<p class="px-2.5 font-mono text-[11px] font-semibold tracking-[1.2px] text-text-tertiary">ABOUT</p>
+				<nav aria-label="About" class="flex flex-col gap-0.5">
+					{#each about as entry}
+						{@render item(entry.href, entry.label, entry.icon)}
+					{/each}
+					<a
+						href="mailto:{CONTACT_EMAIL}"
+						onclick={(event) => (event.preventDefault(), dialogs.openContact(), onClose?.())}
+						class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-body text-text-secondary transition hover:bg-surface-1 hover:text-text-primary"
+					>
+						<Icon name="mail" size={18} class="text-text-tertiary" />
+						Contact
+					</a>
+				</nav>
+			</div>
+		{/if}
 	</div>
 
 	<div class="mt-6 flex flex-col gap-3">

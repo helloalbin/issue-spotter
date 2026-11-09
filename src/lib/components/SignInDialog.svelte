@@ -3,6 +3,7 @@
 	import { SITE_NAME } from '#lib/site.js';
 	import GoogleMark from './GoogleMark.svelte';
 	import Icon from './Icon.svelte';
+	import Logo from './Logo.svelte';
 
 	let dialog = $state<HTMLDialogElement>();
 
@@ -35,8 +36,8 @@
 			<Icon name="x" />
 		</button>
 
-		<span class="mx-auto grid size-10 place-items-center rounded-lg bg-surface-2 text-text-secondary">
-			<Icon name="scale" size={20} />
+		<span class="mx-auto grid size-12 place-items-center rounded-xl bg-accent-subtle">
+			<Logo size={32} />
 		</span>
 		<h2 id="signin-title" class="type-h4 mt-4">Sign in to {SITE_NAME}</h2>
 		<p class="type-body mt-2 text-text-secondary">

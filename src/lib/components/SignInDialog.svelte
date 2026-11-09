@@ -59,8 +59,8 @@
 
 		<p class="mt-4 text-caption text-text-tertiary">
 			By continuing, you agree to our
-			<a href="/terms" class="underline hover:text-text-primary">Terms</a> and
-			<a href="/privacy" class="underline hover:text-text-primary">Privacy Policy</a>.
+			<a href="/terms" target="_blank" rel="noopener" class="underline hover:text-text-primary">Terms</a> and
+			<a href="/privacy" target="_blank" rel="noopener" class="underline hover:text-text-primary">Privacy Policy</a>.
 		</p>
 	</div>
 </dialog>

@@ -7,9 +7,17 @@
 		{
 			"binding": "DB",
 			"database_name": "issue-spotter",
+			"database_id": "8f4edabf-2218-4710-bfda-17276d8ec1ca",
 			"migrations_dir": "migrations"
 		}
 	],
+	// Public Firebase web config: identifiers, not secrets. The API key is restricted to this site's domains in Google Cloud.
+	"vars": {
+		"FIREBASE_API_KEY": "AIzaSyCSGlFy5DcbNQWmr0rSTf2fOu4ukkT1GZU",
+		"FIREBASE_AUTH_DOMAIN": "legalspotter.com",
+		"FIREBASE_PROJECT_ID": "legalspotter-be82f",
+		"FIREBASE_APP_ID": "1:898342404312:web:8a0f96afd6005b29d217ad"
+	},
 	"send_email": [{ "name": "EMAIL" }],
 	"assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" }
 }

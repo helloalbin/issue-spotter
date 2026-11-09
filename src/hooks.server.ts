@@ -3,6 +3,7 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { createRemoteJWKSet } from 'jose';
 import { QUOTA_SALT } from '$app/env/private';
 import { FIREBASE_AUTH_EMULATOR_URL, FIREBASE_PROJECT_ID } from '$app/env/public';
+import { isProxyPath, passOn } from '#lib/server/auth-proxy.js';
 import { networkOf } from '#lib/server/network.js';
 import {
 	FIREBASE_JWKS_URL,
@@ -46,7 +47,24 @@ async function hashIp(ip: string): Promise<string> {
 		.join('');
 }
 
+/** Headers that cost nothing and close common findings: no content sniffing, a short referrer, no device permissions the app never uses, and HTTPS only once a site has been seen on it. */
+function secure(response: Response, url: URL, frame: 'DENY' | 'SAMEORIGIN'): Response {
+	response.headers.set('x-content-type-options', 'nosniff');
+	response.headers.set('x-frame-options', frame);
+	response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+	response.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+	if (url.protocol === 'https:') response.headers.set('strict-transport-security', 'max-age=31536000');
+	return response;
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
+	// Firebase's sign-in pages, served from this site's address (see `auth-proxy.ts`). They take no visitor or account.
+	if (isProxyPath(event.url.pathname)) {
+		const proxied = await passOn(event.request, FIREBASE_PROJECT_ID);
+		// The sign-in frame is shown inside this site's own pages, so it may be framed by them.
+		return secure(proxied ?? new Response('Not found', { status: 404 }), event.url, 'SAMEORIGIN');
+	}
+
 	let anonId = event.cookies.get(ANON_COOKIE);
 
 	if (!anonId || !UUID.test(anonId)) {
@@ -73,13 +91,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	const response = await resolve(event);
-	// Headers that cost nothing and close common findings: no content sniffing, no framing, a short
-	// referrer, no device permissions the app never uses, and HTTPS only once a site has been seen on it.
-	response.headers.set('x-content-type-options', 'nosniff');
-	response.headers.set('x-frame-options', 'DENY');
-	response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
-	response.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
-	if (event.url.protocol === 'https:') response.headers.set('strict-transport-security', 'max-age=31536000');
-	return response;
+	return secure(await resolve(event), event.url, 'DENY');
 };
